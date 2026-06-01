@@ -1,0 +1,90 @@
+Act as an expert AI agent specializing in the openspec design spec framework. Your task is to generate the complete openspec proposal directory and markdown files to register a new system capability change.
+
+Use the specification below to create all required files.
+
+### TARGET DIRECTORY STRUCTURE TO CREATE:
+Create a new directory at `openspec/changes/extract-ticket-dependencies-and-time-metrics/` containing:
+1. `.openspec.yaml`
+2. `proposal.md`
+3. `design.md`
+4. `tasks.md`
+5. `specs/` (empty directory)
+
+---
+
+### FILE-BY-FILE INSTRUCTIONS & CONTENTS:
+
+#### 1. `.openspec.yaml`
+Write a YAML file containing exactly:
+```yaml
+name: extract-ticket-dependencies-and-time-metrics
+```
+
+#### 2. `proposal.md`
+Structure this file exactly with the following headers and contents:
+* **`## Why`**:
+  Explain that Jira Kanban boards have complex blockers and cross-team dependencies not visible in flat lists or standard Confluence reports. In addition, assessing ticket health and timeline risks requires key time metrics (story points, estimates, spent time) and reporter metadata. This change is needed to provide deep dependency graphing and rich time analytics directly from the Kanban extraction pipeline. Furthermore, querying the Jira API on every dashboard reload causes significant latency and risks API rate-limiting; a periodic database storage and caching mechanism is critical to enable instantaneous frontend load times.
+* **`## What Changes`**:
+  Detail the updates in `services.py` and backend architecture:
+  - **Query API Fields Expansion**: Requests `"issuelinks"`, `"reporter"`, `"created"`, `"duedate"`, `"resolutiondate"`, `"timeoriginalestimate"`, `"timeestimate"`, `"timespent"`, and custom story points (`customfield_10006`, `customfield_10016`).
+  - **Dependency Classifier**: Introduce `parse_issue_dependencies` to interpret Jira link directions and categorize relationships into `blockers`, `blocking`, and `other_dependencies` as `intra_team` or `inter_team`.
+  - **Dependency Aggregator**: Introduce `find_and_analyze_dependencies` to generate a top-level summary including metric counts and exact link pairs.
+  - **Periodic Database Storage**: Build a database interface (e.g. SQLite) to store raw ticket payloads, parsed dependencies, and calculated metrics. Run a background cron or scheduler (e.g. FastAPI BackgroundTasks or APScheduler) to periodically extract data from Jira and write to the database.
+  - **Main.py Fetching Shift**: Transition `main.py` endpoints (tickets, metrics, network graph) to read directly from the database rather than triggering active Jira REST API calls on request.
+* **`## Capabilities`**:
+  * **`### New Capabilities`**:
+    - `jira-dependency-analysis`: Parses, filters, and structures directional blocker trees and team boundary lines across Kanban board issues.
+    - `jira-time-metrics-extraction`: Pulls created/due dates, resolution dates, story points, and core time tracking estimates from individual tickets.
+    - `periodic-database-caching`: Periodically executes extraction, stores the results in a database, and decouples active UI fetches from external Atlassian API rate-limits.
+  * **`### Modified Capabilities`**:
+    - `extract-ticket-details-from-kanban-links`: Enhanced to retrieve advanced metadata fields and enrich output schemas in the database.
+* **`## Impact`**:
+  - **Affected code**: `services.py` (updated query mappings and output), `main.py` (transitioned to database retrieval, scheduler initialization).
+  - **Affected output**: High-speed, rate-limit-safe database (SQLite) instead of a transient file.
+  - **Security impact**: None. Database access is local and secure; API credentials remain safely stored in `.env`.
+  - **Operational impact**: Eliminates external API latency (down from seconds to milliseconds for frontend fetches) and guarantees zero external API calls during peak user traffic.
+
+#### 3. `design.md`
+Structure this file exactly with the following headers and contents:
+* **`## Context`**:
+  The current Kanban extraction service successfully fetches active issues and standard attributes but lacked native visibility into what was blocking each ticket, who blocked whom, and detailed time-tracking parameters. A structured extraction and parsing logic was required. Additionally, relying on on-demand Jira API calls introduces severe user lag and potential rate limits, necessitating a persistent, scheduled caching database.
+* **`## Goals / Non-Goals`**:
+  * **Goals**:
+    - Extract both inward and outward ticket dependencies.
+    - Correctly identify blockers vs general relations.
+    - Classify dependencies by project boundary prefixes to flag cross-team coordination risks.
+    - Pull reporter name and all standard/custom time metrics to calculate velocity.
+    - Persist results in a local database (SQLite) periodically.
+    - Serve frontend API endpoints from cached database records rather than live API calls.
+  * **Non-Goals**:
+    - Building complex relational schemas (we store clean serialized JSON documents or key metrics directly in the DB table to keep reads lightweight).
+* **`## Decisions`**:
+  - **1. Project-Prefix Partitioning**: Use the issue key prefix (the part before the hyphen, e.g. `QSYSCLOUD`) as the team identifier. Rationale: Extremely robust and aligns with Jira company/team-managed project standards.
+  - **2. Explicit Blocker Identification**: Flag link types containing "blocked" or "blocker" or company-standard "Blocks" type as active blockers. Rationale: Avoids misclassifying simple informational relations (like "relates to") as critical progress blockers.
+  - **3. Primary & Secondary Story Points Fields**: Fallback from `customfield_10006` to `customfield_10016` when checking story points. Rationale: Story points custom field IDs can vary depending on Jira Software project configurations.
+  - **4. Persistent SQLite Store & Background Scheduler**: Use a single-file SQLite database and an execution scheduler (e.g. APScheduler running every 30-60 minutes). Rationale: SQLite is zero-configuration, reliable, and perfectly suits caching local dashboard reads. Decouples dashboard reads from Jira API latency.
+* **`## Risks / Trade-offs`**:
+  - **Risk**: Data can be stale between sync cycles.
+  - **Mitigation**: Add a manual "Sync Now" button on the UI that triggers a background sync task, letting users fetch fresh data if needed, while keeping automatic periodic syncs as the default.
+* **`## Migration Plan`**:
+  - Apply code changes using multi-line replacements in `services.py` to extract dependencies and time metrics.
+  - Design the database schema (tickets table, dependencies table, or a state metadata table in SQLite).
+  - Set up `main.py` with FastAPI and an active background scheduler.
+  - Route all API endpoints (`/api/tickets`, `/api/metrics`, `/api/network`) to fetch records directly from the SQLite database.
+* **`## Open Questions`**:
+  - What is the optimal synchronization frequency (e.g., every 30 minutes, or hourly)?
+
+#### 4. `tasks.md`
+Structure this file exactly with the following headers and tasks to track implementation:
+```markdown
+# Tasks - Extract Ticket Dependencies, Time Metrics, and Database Caching
+
+- [x] Update `_process_jira_query` to extract and return `"issuelinks"`, `"reporter"`, `"created"`, `"duedate"`, `"resolutiondate"`, `"timeoriginalestimate"`, `"timeestimate"`, and `"timespent"`.
+- [x] Add helper functions `parse_issue_dependencies` and `find_and_analyze_dependencies` in `services.py`.
+- [x] Update `get_ticket_details_from_kanban_links` to request all advanced metrics fields and incorporate parsed dependency info.
+- [x] Update CLI block (`if __name__ == "__main__":`) in `services.py` to calculate and output the dependency summary.
+- [x] Create a database connector (SQLite) to periodically persist the extracted Kanban ticket records and dependency analysis reports.
+- [x] Set up a background task scheduler in the FastAPI backend (`main.py`) to run `services.py` periodically.
+- [x] Update all backend REST API endpoints in `main.py` to serve data directly from the SQLite persistent database.
+- [x] Verify database read/write cycles and test scheduler execution.
+```
