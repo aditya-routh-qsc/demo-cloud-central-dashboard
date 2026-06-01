@@ -1,0 +1,1213 @@
+{
+  "fetched_at": "2026-06-01T13:21:30.642621+00:00",
+  "input_links": [
+    "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+  ],
+  "processed_links": [
+    {
+      "board_link": "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863",
+      "board_id": "1863",
+      "discovered_count": 99
+    }
+  ],
+  "results": [
+    {
+      "ticket_key": "QSYSCLOUD-1039",
+      "summary": "Update on Map View after linking inventory items in hierarchy view",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:40.447-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-1096",
+      "summary": "Setup dev testing for azure-agent microservice",
+      "status": "To Do",
+      "assignee": "Mazurenko, Vitalii Mazurenko -CTR",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:42.858-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-11200",
+      "summary": "Core takes ~22 hours to recover and sync status in Reflect after network connectivity is restored",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-11T23:45:53.591-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-11322",
+      "summary": "Organization selection is not persistent when navigating from Microsoft 365 Integration to Space Manager",
+      "status": "To Do",
+      "assignee": "Mohanty, Abinash",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:02.156-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-1146",
+      "summary": "Use EventHub as an events queue for status rollups",
+      "status": "To Do",
+      "assignee": "Mazurenko, Vitalii Mazurenko -CTR",
+      "priority": "Lowest",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:21:54.912-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-11484",
+      "summary": "M365 Integration :: Microsoft 365 integration intermittently returns an empty rooms list after successful setup",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-11T23:45:52.661-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-12288",
+      "summary": "Org role change confirmation not shown on Analytics pages; permissions/UI not refreshed until reload",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Low",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:01.854-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-14047",
+      "summary": "Update Organization details view in Space Manager",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-20T04:19:11.284-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-1475",
+      "summary": "Develop Unit and Integration Tests for Analytics Service",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:04:29.254-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-15456",
+      "summary": "Add: Reflect analytics infrastructure",
+      "status": "In Progress",
+      "assignee": "Mukane, Fawaz A",
+      "priority": "High",
+      "issue_type": "Story",
+      "updated": "2026-05-06T10:30:11.806-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-15802",
+      "summary": "[UX] Implement Spaces Hard limits",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T03:53:05.960-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-16274",
+      "summary": "System status roll up is different throughout Analytics",
+      "status": "To Do",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-04-14T03:25:58.291-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-16773",
+      "summary": "Implement time range selector in Reliability Report & System Reliability",
+      "status": "In Progress",
+      "assignee": "Surbhat, Abhishek",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T01:01:38.877-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-17171",
+      "summary": "Search behaviour changes in every hierarchy view",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "High",
+      "issue_type": "Story",
+      "updated": "2026-04-23T22:52:34.303-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-17305",
+      "summary": "Invitee count issues",
+      "status": "To Do",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-04-14T03:21:51.582-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-17719",
+      "summary": "Analytics Rollup worker erroring out on qa-latest",
+      "status": "SQA Ready",
+      "assignee": "Johnson, Dane A",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-03-23T00:09:13.274-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-18655",
+      "summary": "Events Not Generated in Event Hub Even When Core Is on 10.2 FW with Required Configs Enabled",
+      "status": "To Do",
+      "assignee": "Madhavi, Giriboina",
+      "priority": "Highest",
+      "issue_type": "Bug",
+      "updated": "2026-06-01T02:48:28.396-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-18666",
+      "summary": "[UX] Space Manager Redesign",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-03-23T22:00:18.700-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-18745",
+      "summary": "[HIGH] BD-SAST - Reflect Analytics R2026.03 -DOM-Based Cross-Site Scripting- Total count : 2",
+      "status": "To Do",
+      "assignee": "Sinha, Ashutosh Kumar",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-04-14T08:44:39.810-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-18761",
+      "summary": "Ok system listing under faults on Staging",
+      "status": "To Do",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-04-14T03:15:09.355-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-19148",
+      "summary": "[SQA-Automation] Fixing failing test cases",
+      "status": "In SQA",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-30T06:17:08.108-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-1938",
+      "summary": "[BE] Implementation of section \"Recent\"",
+      "status": "To Do",
+      "assignee": "Surbhat, Abhishek",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:22:03.025-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-1939",
+      "summary": "[BE] Implementation of section \"Favorites\"",
+      "status": "To Do",
+      "assignee": "Chauhan, Akash",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:44.714-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-19522",
+      "summary": "Space Usage Testing for Acuity Meeting Rooms",
+      "status": "In SQA",
+      "assignee": "Madhavi, Giriboina",
+      "priority": "Medium",
+      "issue_type": "Task",
+      "updated": "2026-05-26T01:07:02.678-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-19548",
+      "summary": "Implement hard limit in Space Manager",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-03T00:30:30.350-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-19549",
+      "summary": "Implement hard limit in creating rooms from M365 Integration",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-03T00:30:33.691-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-20004",
+      "summary": "File upload succeeds upon cancellation - Intermittently ",
+      "status": "In SQA",
+      "assignee": "Ashok, Ananya",
+      "priority": "Low",
+      "issue_type": "Bug",
+      "updated": "2026-05-25T02:48:29.358-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2034",
+      "summary": "Tags Section Implementation (Assign Systems)",
+      "status": "To Do",
+      "assignee": "Surbhat, Abhishek",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:43.628-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2037",
+      "summary": "[BE] Status Roll up for Tags",
+      "status": "To Do",
+      "assignee": "Mazurenko, Vitalii Mazurenko -CTR",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:45.044-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-20837",
+      "summary": "[UX] AIO Integration - System Explorer",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-12T10:19:15.264-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-20838",
+      "summary": "[UX] AIO Integration - Space Manager",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-12T10:19:13.630-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-20839",
+      "summary": "[UX] AIO Integration - System Reliability",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-12T10:19:14.576-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2163",
+      "summary": "Space Manager: Support Repositioning of Existing Spaces",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:43.254-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2198",
+      "summary": "[UX] Time-Series 24-Hour Chart for Room & System Usage",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-03-25T07:21:16.645-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2202",
+      "summary": "[UX] Space Utilization Summary Report",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:12:22.488-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2203",
+      "summary": "[UX] Gap Analysis Reports",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:12:22.092-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2204",
+      "summary": "[UX] Time-of-Day / Day-of-Week Analysis",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:12:21.690-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22083",
+      "summary": "[SQA-Automation] Automate Validate Business Hour \u2013 Edit Modal Implementation",
+      "status": "In SQA",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-30T06:19:14.985-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22086",
+      "summary": "[SQA-Automation] Automate Enable business hours configuration across Spaces in Map View - Edit Mode",
+      "status": "SQA To Do",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-30T06:20:19.175-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22186",
+      "summary": "Space name in System link and Business Hours should end with ellipsis when space name is long",
+      "status": "In SQA",
+      "assignee": "V, Shalini",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-30T06:04:56.006-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22377",
+      "summary": "Implement summary cards in Space Usage dashboard",
+      "status": "To Do",
+      "assignee": "C K, Amrutha",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T03:38:55.696-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22465",
+      "summary": "Inconsistent time selection behavior in Space Usage slider",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-28T07:25:07.590-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22504",
+      "summary": "[Critical][Black Duck] cipher\u2011base Improper Input Validation (CVE\u20112025\u20119287)",
+      "status": "In Progress",
+      "assignee": "Atai, Roman",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:02.396-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22547",
+      "summary": "Success toast message truncates full room name after linking room in Space Manager",
+      "status": "To Do",
+      "assignee": "Bandi, Vishnu T",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:02.668-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22548",
+      "summary": "Font style and alignment inconsistency in reassigning room in M365",
+      "status": "To Do",
+      "assignee": "Bandi, Vishnu T",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:02.961-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22550",
+      "summary": "Font alignment issue in unlink room confirmation popup",
+      "status": "To Do",
+      "assignee": "Bandi, Vishnu T",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:03.260-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22613",
+      "summary": "Enable AIO System linking with spaces",
+      "status": "Needs Review",
+      "assignee": "Bandi, Vishnu T",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-06-01T05:29:16.599-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22614",
+      "summary": "[BE] Sync AIO devices to Analytics",
+      "status": "In Progress",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-27T23:01:44.544-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22615",
+      "summary": "[UI] Visualize system type",
+      "status": "Needs Review",
+      "assignee": "Chauhan, Akash",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T23:03:17.695-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22616",
+      "summary": "Long space names overflow UI container in Systems Reliability and Reliability Report",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:03.493-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22620",
+      "summary": "User Walkthrough Overlay Hides Pagination and Upload Cancel Action",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:01.360-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22621",
+      "summary": "Handle AIO systems status updates in space manager",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-25T22:54:33.991-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22623",
+      "summary": "Handle AIO system status updates",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-24T23:46:39.973-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22625",
+      "summary": "List AIO Systems in Systems Explorer",
+      "status": "To Do",
+      "assignee": "Chauhan, Akash",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-06-01T00:09:19.349-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22626",
+      "summary": "AIO System View(inventory)",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T02:48:01.869-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22655",
+      "summary": "Qloud packages builds not triggered",
+      "status": "Needs Review",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-05-29T02:21:05.979-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22656",
+      "summary": "Sync UI with latest changes ",
+      "status": "Needs Review",
+      "assignee": "Atai, Roman",
+      "priority": "Medium",
+      "issue_type": "Task",
+      "updated": "2026-05-28T23:00:19.002-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22657",
+      "summary": "AIO  icon visibility in system explorer",
+      "status": "In Progress",
+      "assignee": "Chauhan, Akash",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-29T02:16:33.889-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22658",
+      "summary": "AIO system's peripheral reliability ",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-24T23:36:38.456-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22667",
+      "summary": "Add Manual Enablement Toggle for Space Usage Analytics on Supported AiO and RMS Systems",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T07:26:18.066-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22679",
+      "summary": "Handle AIO system updates in system reliability",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-25T22:55:57.744-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22681",
+      "summary": "Handle AIO systems in reliability report ",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-24T23:36:38.803-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22685",
+      "summary": "Linked systems in Space Manager are not reflected in Systems Reliability after navigation",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-05-26T01:07:02.114-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22697",
+      "summary": "Space creation in Space Manager is not reflected in another tab in real time",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "High",
+      "issue_type": "Bug",
+      "updated": "2026-05-30T06:20:49.011-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22701",
+      "summary": "Unable to upload attachments in System Notes section while editing is allowed",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-30T06:21:18.808-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22731",
+      "summary": "Handle RMS in space manager system linking",
+      "status": "To Do",
+      "assignee": "Anna, Sureshkumar",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-27T00:00:32.803-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22744",
+      "summary": "Raise maintenance notification for window on 30th May",
+      "status": "Needs Review",
+      "assignee": "Mukane, Fawaz A",
+      "priority": "Highest",
+      "issue_type": "Bug",
+      "updated": "2026-05-28T22:59:31.538-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22774",
+      "summary": "Auto-Configure Space Usage on Enablement",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T07:25:50.945-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-22811",
+      "summary": "Empty Timezone Display for Buildings Without Configured Timezone in Space Usage",
+      "status": "To Do",
+      "assignee": "Chauhan, Akash",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-05-30T06:21:51.910-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2285",
+      "summary": "Out of memory logs on agent-wad",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Lowest",
+      "issue_type": "Bug",
+      "updated": "2026-01-13T02:23:33.804-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2312",
+      "summary": "Implement Data Retention Policy for timeseries data",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-13T00:08:59.680-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2595",
+      "summary": "Implementation of \"Rename Domain\" flow",
+      "status": "To Do",
+      "assignee": "Surbhat, Abhishek",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:44.392-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2728",
+      "summary": "Reflect Analytics Infrastructure",
+      "status": "In Progress",
+      "assignee": "Mukane, Fawaz A",
+      "priority": "Medium",
+      "issue_type": "Initiative",
+      "updated": "2026-05-06T20:42:52.453-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2729",
+      "summary": "Reflect Analytics Production Issues Bucket",
+      "status": "In Progress",
+      "assignee": "Anna, Sureshkumar",
+      "priority": "Medium",
+      "issue_type": "Initiative",
+      "updated": "2025-09-29T14:03:10.735-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2841",
+      "summary": "Status change data capture for reflect plus customers",
+      "status": "To Do",
+      "assignee": "Anna, Sureshkumar",
+      "priority": "Lowest",
+      "issue_type": "Story",
+      "updated": "2026-02-09T01:18:19.022-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2872",
+      "summary": "[UX] Peripheral Listing and Grouping by Type & Manufacturer",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-15T03:27:13.596-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2873",
+      "summary": "[UX] Linking Peripherals to Spaces (Manual and Drag & Drop)",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-15T03:27:13.467-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2874",
+      "summary": "[UX] Handling Design Updates and Unassignments Gracefully",
+      "status": "To Do",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-15T03:27:13.536-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2942",
+      "summary": "Automation Utility for Input Sanitization Validation",
+      "status": "To Do",
+      "assignee": "Madhavi, Giriboina",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-08T01:54:29.359-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2943",
+      "summary": "Automation Utility for Cache Testing",
+      "status": "To Do",
+      "assignee": "Madhavi, Giriboina",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-08T01:54:59.965-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-2957",
+      "summary": "Remove Misleading Reliability Comparison Message from System Reliability View",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:21:59.434-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3048",
+      "summary": "Implement Sorting for Columns in Event Log Table",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:31:44.039-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3083",
+      "summary": "Enhancements - Include systems list and favorites and tags in System Reliability",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:21:57.944-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3097",
+      "summary": "Persist selected spaces while navigating from System Explorer",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:21:57.545-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3121",
+      "summary": "[UX] Handle \u201cNo System\u201d Cores Across Explorer, Space Manager, and Reliability",
+      "status": "In Progress",
+      "assignee": "Rakshit, Saswata",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:21:56.439-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3133",
+      "summary": "Performance Testing \u2013 System Reliability for Reflect Application",
+      "status": "In Progress",
+      "assignee": "Sinha, Ashutosh Kumar",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-11T02:03:44.736-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3449",
+      "summary": "Integrate Allure Reporting into Automation Framework for Enhanced Result Visualization for Jenkins",
+      "status": "In SQA",
+      "assignee": "Madhavi, Giriboina",
+      "priority": "Medium",
+      "issue_type": "Task",
+      "updated": "2026-02-24T21:05:45.113-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3551",
+      "summary": "Evaluate and Integrate Allure Reports into Azure",
+      "status": "To Do",
+      "assignee": "Ashok, Ananya",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-02-24T21:07:41.496-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-3552",
+      "summary": "File upload fails after multiple uploads made - Notes - Systems Explorer",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Low",
+      "issue_type": "Bug",
+      "updated": "2026-03-17T00:04:05.617-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4125",
+      "summary": "[ZAP] Medium (High) - Content Security Policy (CSP) Header Not Set on https://staging.reflect.qsc.com",
+      "status": "To Do",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-02-09T08:33:17.370-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4169",
+      "summary": "[ZAP-AUTH] Medium - Content Security Policy (CSP) Header Not Set (22 instances)",
+      "status": "To Do",
+      "assignee": "Sinha, Ashutosh Kumar",
+      "priority": "Low",
+      "issue_type": "Bug",
+      "updated": "2026-02-10T21:33:00.264-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4575",
+      "summary": "Reflect Analytics Parking Lot",
+      "status": "Backlog",
+      "assignee": "Unassigned",
+      "priority": "Medium",
+      "issue_type": "Initiative",
+      "updated": "2025-12-07T23:18:26.976-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4613",
+      "summary": "[BE] Implement Peripheral-to-Space Linking",
+      "status": "To Do",
+      "assignee": "Mazurenko, Vitalii Mazurenko -CTR",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-04-15T03:27:13.605-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4614",
+      "summary": "[BE] Update Space Status Rollup to Support Linked Items",
+      "status": "To Do",
+      "assignee": "Derangula, Sivaprasad",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-06T02:31:46.165-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-4924",
+      "summary": "[ZAP] Medium (High) - Content Security Policy (CSP) Header Not Set on https://staging.reflect.qsc.com",
+      "status": "To Do",
+      "assignee": "Atai, Roman",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-03-11T04:07:46.844-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-5642",
+      "summary": "[ZAP-AUTH] Medium - Content Security Policy (CSP) Header Not Set (22 instances)",
+      "status": "To Do",
+      "assignee": "Atai, Roman",
+      "priority": "Medium",
+      "issue_type": "Bug",
+      "updated": "2026-03-01T23:02:09.012-0800",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-7407",
+      "summary": "Implement Organization status roll-up in Space Collection",
+      "status": "Needs Review",
+      "assignee": "Mehta, Dhruvin",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-27T22:21:25.865-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-9307",
+      "summary": "[BE] Integration with qrem-admin-composite APIs",
+      "status": "Needs Review",
+      "assignee": "Karmalkar, Shubham S",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-26T01:07:03.192-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    },
+    {
+      "ticket_key": "QSYSCLOUD-9308",
+      "summary": "[BE] Endpoint for updating core config from UI",
+      "status": "To Do",
+      "assignee": "Singh, Pawan K",
+      "priority": "Medium",
+      "issue_type": "Story",
+      "updated": "2026-05-28T07:25:58.093-0700",
+      "source_links": [
+        "https://qsc.atlassian.net/jira/software/c/projects/QSYSCLOUD/boards/1863"
+      ]
+    }
+  ],
+  "unresolved_links": [],
+  "partial_errors": [],
+  "counts": {
+    "links_provided": 1,
+    "links_processed": 1,
+    "tickets_discovered": 99,
+    "tickets_resolved": 99,
+    "unresolved_links": 0,
+    "errors": 0
+  }
+}

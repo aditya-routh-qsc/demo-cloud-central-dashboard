@@ -1,0 +1,572 @@
+"""Focused Jira Kanban extraction service.
+
+Primary flow:
+1. Accept one or more Jira Kanban board links.
+2. Discover ticket keys from each board.
+3. Fetch normalized ticket details for discovered keys.
+
+The module is intentionally procedural/functional and environment-driven.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from typing import Any
+from urllib.parse import urlparse
+
+import requests
+import urllib3
+from dotenv import load_dotenv
+from requests.auth import HTTPBasicAuth
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+load_dotenv()
+
+ATLASSIAN_URL: str = os.getenv("ATLASSIAN_URL", "").rstrip("/")
+ATLASSIAN_EMAIL: str = os.getenv("ATLASSIAN_EMAIL", "")
+ATLASSIAN_TOKEN: str = os.getenv("ATLASSIAN_TOKEN", "")
+
+DEFAULT_TIMEOUT_SECONDS: float = 10.0
+DEFAULT_PAGE_SIZE: int = 50
+DEFAULT_RUNTIME_ENVIRONMENT: str = "local"
+DEFAULT_MAX_TICKET_FETCH_COUNT: int = 1500
+DEFAULT_TICKET_FETCH_WORKERS: int = 8
+
+KANBAN_BOARD_PATTERNS: list[str] = [
+    r"^/jira/software/c/projects/[^/]+/boards/(?P<board_id>\d+)",
+    r"^/jira/boards/(?P<board_id>\d+)",
+]
+
+
+def _is_truthy(raw_value: str) -> bool:
+    """Return True for common truthy string values."""
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_timeout_seconds() -> float:
+    """Return request timeout in seconds from env, with safe fallback."""
+    raw_timeout = os.getenv("ATLASSIAN_TIMEOUT_SECONDS", "").strip()
+    if not raw_timeout:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        value = float(raw_timeout)
+        return value if value > 0 else DEFAULT_TIMEOUT_SECONDS
+    except ValueError:
+        return DEFAULT_TIMEOUT_SECONDS
+
+
+def _get_verify_tls() -> bool:
+    """Return whether TLS certificates should be verified."""
+    raw_value = os.getenv("ATLASSIAN_VERIFY_TLS", "true").strip().lower()
+    return raw_value not in {"false", "0", "no", "off"}
+
+
+def _get_max_ticket_fetch_count() -> int:
+    """Return max number of ticket details to fetch per board.
+
+    Set ATLASSIAN_MAX_TICKET_FETCH_COUNT=0 to disable the cap.
+    """
+    raw_value = os.getenv("ATLASSIAN_MAX_TICKET_FETCH_COUNT", "").strip()
+    if not raw_value:
+        return DEFAULT_MAX_TICKET_FETCH_COUNT
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return DEFAULT_MAX_TICKET_FETCH_COUNT
+    return parsed if parsed >= 0 else DEFAULT_MAX_TICKET_FETCH_COUNT
+
+
+def _get_ticket_fetch_workers() -> int:
+    """Return worker count for concurrent ticket detail fetches.
+
+    Set ATLASSIAN_TICKET_FETCH_WORKERS to tune throughput.
+    """
+    raw_value = os.getenv("ATLASSIAN_TICKET_FETCH_WORKERS", "").strip()
+    if not raw_value:
+        return DEFAULT_TICKET_FETCH_WORKERS
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return DEFAULT_TICKET_FETCH_WORKERS
+    if parsed <= 0:
+        return DEFAULT_TICKET_FETCH_WORKERS
+    return min(parsed, 32)
+
+
+def _get_board_jql() -> str:
+    """Return optional board JQL filter from environment."""
+    return os.getenv("ATLASSIAN_BOARD_JQL", "").strip()
+
+
+def _get_board_order_by() -> str:
+    """Return optional ORDER BY clause fragment for board JQL."""
+    return os.getenv("ATLASSIAN_BOARD_ORDER_BY", "").strip()
+
+
+def _build_board_jql() -> str:
+    """Build effective board JQL from base filter and ordering options."""
+    jql = _get_board_jql()
+    order_by = _get_board_order_by()
+
+    if not jql:
+        return ""
+
+    if order_by and "order by" not in jql.lower():
+        return f"{jql} ORDER BY {order_by}"
+
+    return jql
+
+
+def _get_runtime_environment_mode() -> str:
+    """Return normalized runtime environment mode."""
+    env_value = os.getenv("ATLASSIAN_ENV", "").strip() or os.getenv("APP_ENV", "").strip()
+    return env_value.lower() or DEFAULT_RUNTIME_ENVIRONMENT
+
+
+def _process_jira_query(
+    query_name: str,
+    **kwargs: Any,
+) -> dict[str, Any] | list[dict[str, Any]] | list[str]:
+    """Process Jira API queries through one extensible entry point.
+
+    Supported query_name values:
+    - board_ticket_keys
+    - issue_detail
+
+    Template for adding more queries:
+    1. Add a new `elif query_name == "<your_query_name>":` block.
+    2. Build endpoint/params/headers there.
+    3. Execute request and return parsed result shape.
+    """
+    auth = _get_auth()
+    timeout_seconds = _get_timeout_seconds()
+    verify_tls = _get_verify_tls()
+
+    if query_name == "board_ticket_keys":
+        board_id = str(kwargs.get("board_id", "")).strip()
+        if not board_id:
+            raise ValueError("board_ticket_keys query requires board_id")
+
+        endpoint = f"{ATLASSIAN_URL}/rest/agile/1.0/board/{board_id}/issue"
+        issue_keys: list[str] = []
+        seen_keys: set[str] = set()
+        start_at = 0
+        jql_filter = _build_board_jql()
+
+        while True:
+            params: dict[str, Any] = {
+                "fields": "key",
+                "startAt": start_at,
+                "maxResults": DEFAULT_PAGE_SIZE,
+            }
+            if jql_filter:
+                params["jql"] = jql_filter
+
+            response = requests.get(
+                endpoint,
+                auth=auth,
+                headers={"Accept": "application/json"},
+                params=params,
+                timeout=timeout_seconds,
+                verify=verify_tls,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+            issues = payload.get("issues", [])
+            for issue in issues:
+                issue_key = issue.get("key")
+                if issue_key and issue_key not in seen_keys:
+                    seen_keys.add(issue_key)
+                    issue_keys.append(issue_key)
+
+            total = int(payload.get("total", 0))
+            start_at += len(issues)
+            if start_at >= total or not issues:
+                break
+
+        return issue_keys
+
+    if query_name == "issue_detail":
+        issue_key = str(kwargs.get("issue_key", "")).strip()
+        fields = kwargs.get("fields", [])
+
+        if not issue_key:
+            raise ValueError("issue_detail query requires issue_key")
+        if not isinstance(fields, list) or not fields:
+            raise ValueError("issue_detail query requires fields list")
+
+        endpoint = f"{ATLASSIAN_URL}/rest/api/3/issue/{issue_key}"
+        response = requests.get(
+            endpoint,
+            auth=auth,
+            headers={"Accept": "application/json"},
+            params={"fields": ",".join(fields)},
+            timeout=timeout_seconds,
+            verify=verify_tls,
+        )
+        response.raise_for_status()
+        issue = response.json()
+
+        issue_fields = issue.get("fields", {})
+        assignee = issue_fields.get("assignee") or {}
+        priority = issue_fields.get("priority") or {}
+        issue_type = issue_fields.get("issuetype") or {}
+        status = issue_fields.get("status") or {}
+
+        return {
+            "ticket_key": issue.get("key", issue_key),
+            "summary": issue_fields.get("summary", ""),
+            "status": status.get("name", ""),
+            "assignee": assignee.get("displayName", "Unassigned"),
+            "priority": priority.get("name", ""),
+            "issue_type": issue_type.get("name", ""),
+            "updated": issue_fields.get("updated", ""),
+        }
+
+    raise ValueError(f"Unsupported query_name: {query_name}")
+
+
+def _build_tls_warning_policy_status() -> dict[str, Any]:
+    """Return warning suppression policy decision and optional warning text."""
+    verify_tls = _get_verify_tls()
+    env_mode = _get_runtime_environment_mode()
+    suppression_requested = _is_truthy(
+        os.getenv("ATLASSIAN_SUPPRESS_INSECURE_TLS_WARNING", "false")
+    )
+    override_in_prod = _is_truthy(
+        os.getenv("ATLASSIAN_ALLOW_INSECURE_TLS_WARNING_SUPPRESSION_IN_PROD", "false")
+    )
+
+    status: dict[str, Any] = {
+        "environment_mode": env_mode,
+        "verify_tls": verify_tls,
+        "suppression_mode": "disabled",
+        "suppression_enabled": False,
+        "warning": "",
+    }
+
+    if not suppression_requested:
+        return status
+
+    if verify_tls:
+        status["suppression_mode"] = "not-needed"
+        status["warning"] = (
+            "[security] TLS warning suppression requested but ATLASSIAN_VERIFY_TLS=true; "
+            "suppression not applied."
+        )
+        return status
+
+    if env_mode in {"prod", "production", "staging"} and not override_in_prod:
+        status["suppression_mode"] = "blocked-by-policy"
+        status["warning"] = (
+            "[security] TLS warning suppression blocked in production-like mode. "
+            "Set ATLASSIAN_ALLOW_INSECURE_TLS_WARNING_SUPPRESSION_IN_PROD=true to override."
+        )
+        return status
+
+    status["suppression_mode"] = "enabled"
+    status["suppression_enabled"] = True
+    return status
+
+
+def _apply_tls_warning_suppression_policy() -> dict[str, Any]:
+    """Apply TLS warning suppression policy and return policy status."""
+    policy = _build_tls_warning_policy_status()
+    if policy["suppression_enabled"]:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    return policy
+
+
+def _get_auth() -> HTTPBasicAuth:
+    """Build HTTP basic auth for Atlassian API calls."""
+    missing: list[str] = []
+    if not ATLASSIAN_URL:
+        missing.append("ATLASSIAN_URL")
+    if not ATLASSIAN_EMAIL:
+        missing.append("ATLASSIAN_EMAIL")
+    if not ATLASSIAN_TOKEN:
+        missing.append("ATLASSIAN_TOKEN")
+    if missing:
+        raise ValueError("Missing required Atlassian configuration: " + ", ".join(missing))
+    return HTTPBasicAuth(ATLASSIAN_EMAIL, ATLASSIAN_TOKEN)
+
+
+def _normalize_kanban_links(kanban_links: str | list[str]) -> list[str]:
+    """Normalize Kanban input into a clean list of links."""
+    if isinstance(kanban_links, str):
+        split_links = re.split(r"[,\n]", kanban_links)
+    else:
+        split_links = list(kanban_links)
+    return [link.strip() for link in split_links if link.strip()]
+
+
+def _extract_board_id_from_link(board_link: str) -> str | None:
+    """Extract Jira board ID from supported link patterns."""
+    path = urlparse(board_link).path
+    for pattern in KANBAN_BOARD_PATTERNS:
+        match = re.match(pattern, path)
+        if match:
+            return match.group("board_id")
+    return None
+
+
+def _validate_kanban_link(board_link: str) -> tuple[bool, str | None, str | None]:
+    """Validate Kanban link and return board id when valid."""
+    parsed = urlparse(board_link)
+    if parsed.scheme not in {"http", "https"}:
+        return False, None, "unsupported scheme (expected http/https)"
+    if not parsed.netloc:
+        return False, None, "missing host"
+
+    if ATLASSIAN_URL:
+        expected_host = urlparse(ATLASSIAN_URL).netloc.lower()
+        if expected_host and parsed.netloc.lower() != expected_host:
+            return False, None, f"host does not match ATLASSIAN_URL ({expected_host})"
+
+    board_id = _extract_board_id_from_link(board_link)
+    if not board_id:
+        return False, None, "unsupported board URL format"
+
+    return True, board_id, None
+
+
+def _fetch_board_ticket_keys(board_id: str) -> list[str]:
+    """Fetch all issue keys from a Jira board using Agile API pagination."""
+    issue_keys = _process_jira_query("board_ticket_keys", board_id=board_id)
+    return [str(key) for key in issue_keys]
+
+
+def _fetch_issue_detail(issue_key: str, fields: list[str]) -> dict[str, Any]:
+    """Fetch one Jira issue and normalize its output shape."""
+    ticket = _process_jira_query("issue_detail", issue_key=issue_key, fields=fields)
+    if not isinstance(ticket, dict):
+        raise ValueError("issue_detail query returned invalid payload")
+    return ticket
+
+
+def _fetch_ticket_details_concurrently(
+    ticket_keys: list[str],
+    fields: list[str],
+    board_link: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Fetch ticket details concurrently and return results plus compact errors."""
+    if not ticket_keys:
+        return [], []
+
+    workers = min(_get_ticket_fetch_workers(), len(ticket_keys))
+    results: list[dict[str, Any]] = []
+    partial_errors: list[str] = []
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {
+            executor.submit(_fetch_issue_detail, ticket_key, fields): ticket_key
+            for ticket_key in ticket_keys
+        }
+        for future in as_completed(future_map):
+            ticket_key = future_map[future]
+            try:
+                ticket = future.result()
+                ticket["source_links"] = [board_link]
+                results.append(ticket)
+            except (requests.RequestException, ValueError) as exc:
+                partial_errors.append(
+                    f"[detail-fetch] failed for ticket '{ticket_key}': {exc}"
+                )
+
+    # Keep deterministic order in final output.
+    results.sort(key=lambda ticket: ticket.get("ticket_key", ""))
+    return results, partial_errors
+
+
+def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[str, Any]:
+    """Resolve Kanban links and return normalized ticket details."""
+    normalized_links = _normalize_kanban_links(kanban_links)
+    fields = ["summary", "status", "assignee", "priority", "issuetype", "updated"]
+
+    result: dict[str, Any] = {
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "input_links": normalized_links,
+        "processed_links": [],
+        "results": [],
+        "unresolved_links": [],
+        "partial_errors": [],
+    }
+
+    for board_link in normalized_links:
+        is_valid, board_id, validation_error = _validate_kanban_link(board_link)
+        if not is_valid or not board_id:
+            result["unresolved_links"].append(
+                {"board_link": board_link, "reason": validation_error}
+            )
+            result["partial_errors"].append(
+                f"[input-validation] invalid board link '{board_link}': {validation_error}"
+            )
+            continue
+
+        try:
+            ticket_keys = _fetch_board_ticket_keys(board_id)
+            result["processed_links"].append(
+                {
+                    "board_link": board_link,
+                    "board_id": board_id,
+                    "discovered_count": len(ticket_keys),
+                }
+            )
+        except (requests.RequestException, ValueError) as exc:
+            result["unresolved_links"].append(
+                {"board_link": board_link, "board_id": board_id, "reason": str(exc)}
+            )
+            result["partial_errors"].append(
+                f"[board-discovery] failed for board '{board_link}': {exc}"
+            )
+            continue
+
+        max_ticket_fetch_count = _get_max_ticket_fetch_count()
+        selected_ticket_keys = ticket_keys
+        if max_ticket_fetch_count > 0:
+            selected_ticket_keys = ticket_keys[:max_ticket_fetch_count]
+            skipped_count = len(ticket_keys) - len(selected_ticket_keys)
+            if skipped_count > 0:
+                result["partial_errors"].append(
+                    "[detail-fetch] "
+                    f"skipped {skipped_count} tickets for board {board_id} due to "
+                    f"ATLASSIAN_MAX_TICKET_FETCH_COUNT={max_ticket_fetch_count}."
+                )
+
+        board_results, board_errors = _fetch_ticket_details_concurrently(
+            selected_ticket_keys,
+            fields,
+            board_link,
+        )
+        result["results"].extend(board_results)
+        result["partial_errors"].extend(board_errors)
+
+    result["counts"] = {
+        "links_provided": len(result["input_links"]),
+        "links_processed": len(result["processed_links"]),
+        "tickets_discovered": sum(
+            int(link.get("discovered_count", 0)) for link in result["processed_links"]
+        ),
+        "tickets_resolved": len(result["results"]),
+        "unresolved_links": len(result["unresolved_links"]),
+        "errors": len(result["partial_errors"]),
+    }
+
+    return result
+
+
+def _get_runtime_inputs() -> dict[str, Any]:
+    """Read runtime inputs from environment with safe defaults."""
+    default_board_link = (
+        f"{ATLASSIAN_URL}/jira/software/c/projects/QSYSCLOUD/boards/1863"
+        if ATLASSIAN_URL
+        else "https://your-company.atlassian.net/jira/software/c/projects/KEY/boards/1"
+    )
+    raw_links = os.getenv("ATLASSIAN_KANBAN_LINKS", default_board_link)
+    return {"kanban_links": _normalize_kanban_links(raw_links)}
+
+
+def _collect_runtime_warnings(runtime_inputs: dict[str, Any]) -> list[str]:
+    """Return runtime warnings for low-quality startup input."""
+    warnings: list[str] = []
+    if not runtime_inputs.get("kanban_links"):
+        warnings.append("[input-validation] ATLASSIAN_KANBAN_LINKS is empty.")
+    return warnings
+
+
+def create_kanban_response_json_file(
+    output_file_path: str = "kanban_ticket_details_response.json",
+    kanban_links: str | list[str] | None = None,
+) -> dict[str, Any]:
+    """Fetch Kanban ticket details and save the full response as JSON.
+
+    Args:
+        output_file_path: Relative or absolute output JSON file path.
+        kanban_links: Optional Kanban links override. When omitted, runtime
+            environment inputs are used.
+
+    Returns:
+        A dictionary containing the output path, response counts, and full
+        response payload.
+    """
+    resolved_links = (
+        _normalize_kanban_links(kanban_links)
+        if kanban_links is not None
+        else _get_runtime_inputs()["kanban_links"]
+    )
+
+    response = get_ticket_details_from_kanban_links(resolved_links)
+    absolute_path = os.path.abspath(output_file_path)
+
+    with open(absolute_path, "w", encoding="utf-8") as output_file:
+        json.dump(response, output_file, indent=2)
+
+    return {
+        "output_path": absolute_path,
+        "counts": response.get("counts", {}),
+        "response": response,
+    }
+
+
+if __name__ == "__main__":
+    runtime_inputs = _get_runtime_inputs()
+    runtime_warnings = _collect_runtime_warnings(runtime_inputs)
+    tls_policy = _apply_tls_warning_suppression_policy()
+
+    print(
+        "[startup] "
+        f"environment={tls_policy.get('environment_mode')}; "
+        f"tls_verify={tls_policy.get('verify_tls')}; "
+        f"tls_warning_suppression={tls_policy.get('suppression_mode')}; "
+        f"kanban_links={len(runtime_inputs.get('kanban_links', []))}"
+    )
+
+    if not _get_verify_tls():
+        print(
+            "[security] TLS certificate verification is disabled "
+            "(ATLASSIAN_VERIFY_TLS=false). Use only for local troubleshooting."
+        )
+
+    policy_warning = str(tls_policy.get("warning", "")).strip()
+    if policy_warning:
+        print(policy_warning)
+
+    for warning in runtime_warnings:
+        print(warning)
+
+    print("Running Kanban ticket detail extraction...")
+    saved = create_kanban_response_json_file(
+        output_file_path="kanban_ticket_details_response.json",
+        kanban_links=runtime_inputs["kanban_links"],
+    )
+    data = saved["response"]
+    counts = data.get("counts", {})
+
+    print(f"- Response JSON file: {saved['output_path']}")
+
+    print("\nSummary")
+    print(f"- Links provided: {counts.get('links_provided', 0)}")
+    print(f"- Links processed: {counts.get('links_processed', 0)}")
+    print(f"- Tickets resolved: {counts.get('tickets_resolved', 0)}")
+    print(f"- Unresolved links: {counts.get('unresolved_links', 0)}")
+    print(f"- Partial errors: {counts.get('errors', 0)}")
+
+    print("\nFormatted sample snippet")
+    print(
+        json.dumps(
+            {
+                "fetched_at": data.get("fetched_at"),
+                "counts": counts,
+                "sample_result": (data.get("results") or [{}])[0],
+                "sample_unresolved_link": (data.get("unresolved_links") or [{}])[0],
+                "partial_errors": data.get("partial_errors", [])[:2],
+            },
+            indent=2,
+        )
+    )
