@@ -1,11 +1,12 @@
 # services.py Execution and Activity Log
 
 ## Purpose
-`services.py` is a focused Jira Kanban extraction service that:
+`services.py` is a focused Jira Kanban extraction and analytical service that:
 1. Accepts one or more Jira Kanban board links.
-2. Discovers ticket keys from each board through Jira Agile API.
-3. Fetches normalized ticket details for each discovered key.
-4. Writes a full JSON response to `kanban_ticket_details_response.json`.
+2. Discovers ticket keys from each board through the Jira Agile API.
+3. Fetches normalized ticket details for each discovered key, including core metadata, reporter, and time metrics.
+4. Identifies, parses, and classifies ticket dependencies and blockers as either **intra-team** (same project prefix) or **inter-team** (different project prefix).
+5. Writes a full JSON response to `kanban_ticket_details_response.json` containing detailed results and aggregated dependency reports.
 
 ## High-Level Runtime Flow
 When `services.py` is executed directly:
@@ -19,8 +20,8 @@ When `services.py` is executed directly:
    - number of Kanban links
 5. Prints security warning if TLS verification is disabled.
 6. Runs extraction via `create_kanban_response_json_file(...)`.
-7. Saves response JSON.
-8. Prints summary counts and sample snippet.
+7. Saves response JSON (incorporating ticket details, dependency mapping, and aggregate metrics).
+8. Prints summary counts, dependency & blocker analysis metrics, and a sample snippet.
 
 ## Current .env Configuration Snapshot
 Source: `.env`
@@ -82,8 +83,8 @@ Source: `.env`
 
   2. `issue_detail`
      - Endpoint: `/rest/api/3/issue/{issue_key}`
-     - Requests selected fields and normalizes output:
-       - `ticket_key`, `summary`, `status`, `assignee`, `priority`, `issue_type`, `updated`
+     - Requests selected fields and normalizes output, mapping:
+       - `ticket_key`, `summary`, `status`, `assignee`, `priority`, `issue_type`, `updated`, `issuelinks`, `reporter`, `report_date` (created), `due_date` (duedate), `story_points` (customfield_10006/customfield_10016), `resolution_date`, `time_original_estimate`, `time_estimate`, and `time_spent`.
 
 ### TLS Warning Policy Control
 - `_build_tls_warning_policy_status()`:
@@ -114,6 +115,13 @@ Source: `.env`
   Validates scheme, host, and board pattern.
   If `ATLASSIAN_URL` exists, host must match.
 
+### Dependency Parsing & Time Metric Analysis
+- `parse_issue_dependencies(ticket_key, issuelinks)`:
+  Parses raw issue link relations, detects link direction (`inward` vs `outward`), flags **blockers** (e.g. is blocked by) and **blocking** issues, and classifies each relation as `intra_team` (same project prefix) or `inter_team` (different project prefix).
+
+- `find_and_analyze_dependencies(tickets)`:
+  Aggregates dependency data across all retrieved tickets into a high-level summary, including metrics (`total_dependencies_count`, `blockers_count`, `blocking_count`, `intra_team_count`, `inter_team_count`) and list details categorized by type.
+
 ### Data Fetching
 - `_fetch_board_ticket_keys(board_id)`:
   Returns discovered keys for a board.
@@ -134,7 +142,9 @@ Source: `.env`
   2. Discover ticket keys.
   3. Apply max-fetch cap if configured.
   4. Fetch details concurrently.
-  5. Append results and partial errors.
+  5. Parse ticket dependencies via `parse_issue_dependencies` and attach to each record.
+  6. Perform top-level dependency analysis using `find_and_analyze_dependencies`.
+  7. Append results, dependency reports, and partial errors.
 
   Final payload contains:
   - `fetched_at`
@@ -144,6 +154,7 @@ Source: `.env`
   - `unresolved_links`
   - `partial_errors`
   - `counts` summary
+  - `dependency_analysis` aggregated report
 
 ### File Output
 - `create_kanban_response_json_file(output_file_path, kanban_links)`:
@@ -161,6 +172,7 @@ Output JSON top-level keys:
 - `unresolved_links`
 - `partial_errors`
 - `counts`
+- `dependency_analysis`
 
 Counts include:
 - `links_provided`
@@ -169,6 +181,10 @@ Counts include:
 - `tickets_resolved`
 - `unresolved_links`
 - `errors`
+- `total_dependencies`
+- `blockers`
+- `intra_team_dependencies`
+- `inter_team_dependencies`
 
 ## What Is Currently Being Done by the Script
 Given the current `.env` state, the script currently:
@@ -178,9 +194,10 @@ Given the current `.env` state, the script currently:
 4. Reads Kanban links from environment/default.
 5. Discovers board tickets using board-level JQL filter:
    - `project = QSYSCLOUD AND statusCategory != Done`
-6. Fetches per-ticket details in parallel (default up to 8 workers).
-7. Produces combined response and writes to `kanban_ticket_details_response.json`.
-8. Logs startup status, summary counts, and sample snippet to console.
+6. Fetches per-ticket details, including reporter, created/due dates, story points, and core time metrics, in parallel (default up to 8 workers).
+7. Identifies and parses all ticket dependencies, categorizing intra/inter-team links and blockers.
+8. Produces combined response and writes to `kanban_ticket_details_response.json`.
+9. Logs startup status, summary counts, dependency metrics, and sample snippet to console.
 
 ## Risks and Operational Notes
 1. TLS verification is disabled in current setup; this is suitable only for local troubleshooting.

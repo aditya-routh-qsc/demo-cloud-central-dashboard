@@ -218,15 +218,30 @@ def _process_jira_query(
         priority = issue_fields.get("priority") or {}
         issue_type = issue_fields.get("issuetype") or {}
         status = issue_fields.get("status") or {}
+        reporter = issue_fields.get("reporter") or {}
+        story_points = (
+            issue_fields.get("customfield_10006")
+            if issue_fields.get("customfield_10006") is not None
+            else issue_fields.get("customfield_10016")
+        )
 
         return {
             "ticket_key": issue.get("key", issue_key),
             "summary": issue_fields.get("summary", ""),
             "status": status.get("name", ""),
-            "assignee": assignee.get("displayName", "Unassigned"),
+            "assignee": assignee.get("displayName", "Unassigned") if isinstance(assignee, dict) else "Unassigned",
             "priority": priority.get("name", ""),
             "issue_type": issue_type.get("name", ""),
             "updated": issue_fields.get("updated", ""),
+            "issuelinks": issue_fields.get("issuelinks", []),
+            "reporter": reporter.get("displayName", "Unassigned") if isinstance(reporter, dict) else "Unassigned",
+            "report_date": issue_fields.get("created", ""),
+            "due_date": issue_fields.get("duedate"),
+            "story_points": story_points,
+            "resolution_date": issue_fields.get("resolutiondate"),
+            "time_original_estimate": issue_fields.get("timeoriginalestimate"),
+            "time_estimate": issue_fields.get("timeestimate"),
+            "time_spent": issue_fields.get("timespent"),
         }
 
     raise ValueError(f"Unsupported query_name: {query_name}")
@@ -384,10 +399,197 @@ def _fetch_ticket_details_concurrently(
     return results, partial_errors
 
 
+def parse_issue_dependencies(ticket_key: str, issuelinks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Parse raw Jira issue links into classified dependencies and blockers.
+
+    Args:
+        ticket_key: The key of the ticket being parsed (e.g., QSYSCLOUD-123).
+        issuelinks: Raw Jira issuelinks field content.
+
+    Returns:
+        A dictionary containing lists of classified dependency dictionaries:
+        - blockers: dependencies that block this ticket (inward block)
+        - blocking: issues that this ticket blocks (outward block)
+        - other_dependencies: other relations (relates, duplicate, etc.)
+    """
+    current_project = ticket_key.split("-")[0] if "-" in ticket_key else ""
+
+    blockers = []
+    blocking = []
+    other_dependencies = []
+
+    for link in issuelinks:
+        link_type = link.get("type", {})
+        link_name = link_type.get("name", "")
+
+        target_issue = None
+        direction = None
+        relation_desc = ""
+
+        if "inwardIssue" in link:
+            target_issue = link["inwardIssue"]
+            direction = "inward"
+            relation_desc = link_type.get("inward", "")
+        elif "outwardIssue" in link:
+            target_issue = link["outwardIssue"]
+            direction = "outward"
+            relation_desc = link_type.get("outward", "")
+
+        if not target_issue:
+            continue
+
+        target_key = target_issue.get("key", "")
+        target_project = target_key.split("-")[0] if "-" in target_key else ""
+
+        # Classify as intra_team or inter_team
+        is_intra = False
+        if current_project and target_project:
+            is_intra = current_project.upper() == target_project.upper()
+        classification = "intra_team" if is_intra else "inter_team"
+
+        # Get extra fields if present
+        target_fields = target_issue.get("fields", {})
+        target_summary = target_fields.get("summary", "")
+        target_status = ""
+        if isinstance(target_fields.get("status"), dict):
+            target_status = target_fields["status"].get("name", "")
+
+        dep_detail = {
+            "ticket_key": target_key,
+            "relation_name": link_name,
+            "relation_description": relation_desc,
+            "direction": direction,
+            "classification": classification,
+            "summary": target_summary,
+            "status": target_status,
+        }
+
+        # Identify blockers and blocking
+        is_blocker = False
+        is_blocking = False
+
+        link_name_lower = link_name.lower()
+        relation_desc_lower = relation_desc.lower()
+
+        # Typical blocking indicators:
+        if "blocked" in relation_desc_lower or "blocker" in relation_desc_lower or (link_name_lower == "blocks" and direction == "inward"):
+            is_blocker = True
+        elif "blocks" in relation_desc_lower or (link_name_lower == "blocks" and direction == "outward"):
+            is_blocking = True
+
+        if is_blocker:
+            blockers.append(dep_detail)
+        elif is_blocking:
+            blocking.append(dep_detail)
+        else:
+            other_dependencies.append(dep_detail)
+
+    return {
+        "blockers": blockers,
+        "blocking": blocking,
+        "other_dependencies": other_dependencies,
+    }
+
+
+def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, Any]:
+    """Analyze dependencies across a list of tickets, summarizing counts and structures.
+
+    Args:
+        tickets: List of ticket dictionaries.
+
+    Returns:
+        A dictionary with dependency analysis metrics and categorized issues.
+    """
+    total_dependencies = 0
+    blockers_count = 0
+    blocking_count = 0
+    intra_team_count = 0
+    inter_team_count = 0
+
+    all_blockers = []
+    all_blocking = []
+    all_other_dependencies = []
+
+    for ticket in tickets:
+        ticket_key = ticket.get("ticket_key", "")
+        deps = ticket.get("dependencies", {})
+
+        ticket_blockers = deps.get("blockers", [])
+        ticket_blocking = deps.get("blocking", [])
+        ticket_other = deps.get("other_dependencies", [])
+
+        blockers_count += len(ticket_blockers)
+        blocking_count += len(ticket_blocking)
+
+        for dep in ticket_blockers:
+            if dep.get("classification") == "intra_team":
+                intra_team_count += 1
+            else:
+                inter_team_count += 1
+
+            all_blockers.append({
+                "source_ticket": ticket_key,
+                "target_ticket": dep["ticket_key"],
+                "relation": dep["relation_description"],
+                "classification": dep["classification"],
+                "summary": dep["summary"],
+                "status": dep["status"]
+            })
+
+        for dep in ticket_blocking:
+            if dep.get("classification") == "intra_team":
+                intra_team_count += 1
+            else:
+                inter_team_count += 1
+
+            all_blocking.append({
+                "source_ticket": ticket_key,
+                "target_ticket": dep["ticket_key"],
+                "relation": dep["relation_description"],
+                "classification": dep["classification"],
+                "summary": dep["summary"],
+                "status": dep["status"]
+            })
+
+        for dep in ticket_other:
+            if dep.get("classification") == "intra_team":
+                intra_team_count += 1
+            else:
+                inter_team_count += 1
+
+            all_other_dependencies.append({
+                "source_ticket": ticket_key,
+                "target_ticket": dep["ticket_key"],
+                "relation": dep["relation_description"],
+                "classification": dep["classification"],
+                "summary": dep["summary"],
+                "status": dep["status"]
+            })
+
+        total_dependencies += len(ticket_blockers) + len(ticket_blocking) + len(ticket_other)
+
+    return {
+        "total_dependencies_count": total_dependencies,
+        "blockers_count": blockers_count,
+        "blocking_count": blocking_count,
+        "intra_team_count": intra_team_count,
+        "inter_team_count": inter_team_count,
+        "details": {
+            "blockers": all_blockers,
+            "blocking": all_blocking,
+            "other_dependencies": all_other_dependencies,
+        }
+    }
+
+
 def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[str, Any]:
     """Resolve Kanban links and return normalized ticket details."""
     normalized_links = _normalize_kanban_links(kanban_links)
-    fields = ["summary", "status", "assignee", "priority", "issuetype", "updated"]
+    fields = [
+        "summary", "status", "assignee", "priority", "issuetype", "updated", "issuelinks",
+        "reporter", "created", "duedate", "customfield_10006", "customfield_10016",
+        "timeoriginalestimate", "timeestimate", "timespent", "resolutiondate"
+    ]
 
     result: dict[str, Any] = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -444,8 +646,19 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
             fields,
             board_link,
         )
+
+        # Parse dependencies for each ticket
+        for ticket in board_results:
+            ticket_key = ticket.get("ticket_key", "")
+            raw_links = ticket.get("issuelinks", [])
+            ticket["dependencies"] = parse_issue_dependencies(ticket_key, raw_links)
+
         result["results"].extend(board_results)
         result["partial_errors"].extend(board_errors)
+
+    # Perform top-level dependency analysis
+    dependency_analysis = find_and_analyze_dependencies(result["results"])
+    result["dependency_analysis"] = dependency_analysis
 
     result["counts"] = {
         "links_provided": len(result["input_links"]),
@@ -456,6 +669,10 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
         "tickets_resolved": len(result["results"]),
         "unresolved_links": len(result["unresolved_links"]),
         "errors": len(result["partial_errors"]),
+        "total_dependencies": dependency_analysis.get("total_dependencies_count", 0),
+        "blockers": dependency_analysis.get("blockers_count", 0),
+        "intra_team_dependencies": dependency_analysis.get("intra_team_count", 0),
+        "inter_team_dependencies": dependency_analysis.get("inter_team_count", 0),
     }
 
     return result
@@ -556,6 +773,12 @@ if __name__ == "__main__":
     print(f"- Tickets resolved: {counts.get('tickets_resolved', 0)}")
     print(f"- Unresolved links: {counts.get('unresolved_links', 0)}")
     print(f"- Partial errors: {counts.get('errors', 0)}")
+
+    print("\nDependency & Blocker Analysis")
+    print(f"- Total Dependencies: {counts.get('total_dependencies', 0)}")
+    print(f"- Blockers: {counts.get('blockers', 0)}")
+    print(f"- Intra-team Dependencies: {counts.get('intra_team_dependencies', 0)}")
+    print(f"- Inter-team Dependencies: {counts.get('inter_team_dependencies', 0)}")
 
     print("\nFormatted sample snippet")
     print(
