@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any
@@ -21,11 +22,13 @@ from urllib.parse import urlparse
 import requests
 import urllib3
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+urllib3.disable_warnings()
 
-load_dotenv()
+load_dotenv(override=True)
 
 ATLASSIAN_URL: str = os.getenv("ATLASSIAN_URL", "").rstrip("/")
 ATLASSIAN_EMAIL: str = os.getenv("ATLASSIAN_EMAIL", "")
@@ -36,6 +39,12 @@ DEFAULT_PAGE_SIZE: int = 50
 DEFAULT_RUNTIME_ENVIRONMENT: str = "local"
 DEFAULT_MAX_TICKET_FETCH_COUNT: int = 1500
 DEFAULT_TICKET_FETCH_WORKERS: int = 8
+DEFAULT_RETRY_ATTEMPTS: int = 3
+DEFAULT_RETRY_BACKOFF_FACTOR: float = 0.5
+DEFAULT_JIRA_SEARCH_PATH: str = "/rest/api/3/search/jql"
+
+_HTTP_SESSION: requests.Session | None = None
+_HTTP_SESSION_LOCK: Lock = Lock()
 
 KANBAN_BOARD_PATTERNS: list[str] = [
     r"^/jira/software/c/projects/[^/]+/boards/(?P<board_id>\d+)",
@@ -108,6 +117,137 @@ def _get_board_order_by() -> str:
     return os.getenv("ATLASSIAN_BOARD_ORDER_BY", "").strip()
 
 
+def _get_jira_search_path() -> str:
+    """Return Jira search path with safe default for modern cloud tenants."""
+    raw_path = os.getenv("ATLASSIAN_JIRA_SEARCH_PATH", "").strip() or DEFAULT_JIRA_SEARCH_PATH
+    if not raw_path.startswith("/"):
+        return f"/{raw_path}"
+    return raw_path
+
+
+def _get_allowed_host_aliases() -> set[str]:
+    """Return normalized host aliases that are treated as same-tenant."""
+    raw_value = os.getenv("ATLASSIAN_ALLOWED_HOST_ALIASES", "")
+    aliases = [item.strip() for item in re.split(r"[,\n]", raw_value) if item.strip()]
+    return {_normalize_host_alias(item) for item in aliases}
+
+
+def _get_retry_attempts() -> int:
+    """Return retry attempt count for transient Jira GET failures."""
+    raw_value = os.getenv("ATLASSIAN_RETRY_ATTEMPTS", "").strip()
+    if not raw_value:
+        return DEFAULT_RETRY_ATTEMPTS
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return DEFAULT_RETRY_ATTEMPTS
+    return min(max(parsed, 0), 10)
+
+
+def _get_retry_backoff_factor() -> float:
+    """Return retry backoff factor for transient Jira GET failures."""
+    raw_value = os.getenv("ATLASSIAN_RETRY_BACKOFF_FACTOR", "").strip()
+    if not raw_value:
+        return DEFAULT_RETRY_BACKOFF_FACTOR
+    try:
+        parsed = float(raw_value)
+    except ValueError:
+        return DEFAULT_RETRY_BACKOFF_FACTOR
+    if parsed < 0:
+        return DEFAULT_RETRY_BACKOFF_FACTOR
+    return min(parsed, 10.0)
+
+
+def _safe_int(value: Any, default: int | None = None) -> int | None:
+    """Convert value to int with fallback default for malformed values."""
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_host_alias(raw_host: str) -> str:
+    """Normalize host text into canonical host[:port] form."""
+    candidate = raw_host.strip()
+    if not candidate:
+        return ""
+    if "://" not in candidate:
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    return _canonical_host(parsed)
+
+
+def _canonical_host(parsed: Any) -> str:
+    """Return lowercase canonical host representation with non-default port."""
+    hostname = (getattr(parsed, "hostname", "") or "").lower()
+    if not hostname:
+        return ""
+
+    port = getattr(parsed, "port", None)
+    scheme = (getattr(parsed, "scheme", "") or "").lower()
+    if port is None:
+        return hostname
+
+    if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
+        return hostname
+
+    return f"{hostname}:{port}"
+
+
+def _create_http_session() -> requests.Session:
+    """Create shared HTTP session configured for transient retry behavior."""
+    session = requests.Session()
+    retry_attempts = _get_retry_attempts()
+    retry = Retry(
+        total=retry_attempts,
+        connect=retry_attempts,
+        read=retry_attempts,
+        status=retry_attempts,
+        backoff_factor=_get_retry_backoff_factor(),
+        status_forcelist=[429, 502, 503, 504],
+        allowed_methods=frozenset(["GET"]),
+        respect_retry_after_header=True,
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+def _get_http_session() -> requests.Session:
+    """Return shared session instance used by Jira GET requests."""
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        with _HTTP_SESSION_LOCK:
+            if _HTTP_SESSION is None:
+                _HTTP_SESSION = _create_http_session()
+    return _HTTP_SESSION
+
+
+def _jira_get(
+    endpoint: str,
+    auth: HTTPBasicAuth,
+    params: dict[str, Any],
+    timeout_seconds: float,
+    verify_tls: bool,
+) -> requests.Response:
+    """Execute Jira GET through shared session with retry-enabled adapter."""
+    session = _get_http_session()
+    response = session.get(
+        endpoint,
+        auth=auth,
+        headers={"Accept": "application/json"},
+        params=params,
+        timeout=timeout_seconds,
+        verify=verify_tls,
+    )
+    response.raise_for_status()
+    return response
+
+
 def _build_board_jql() -> str:
     """Build effective board JQL from base filter and ordering options."""
     jql = _get_board_jql()
@@ -120,6 +260,32 @@ def _build_board_jql() -> str:
         return f"{jql} ORDER BY {order_by}"
 
     return jql
+
+
+def _extract_project_key_from_link(board_link: str) -> str:
+    """Extract project key from board link when present."""
+    path = urlparse(board_link).path
+    match = re.search(r"/projects/(?P<project_key>[A-Z][A-Z0-9_]*)/boards/\d+", path)
+    if not match:
+        return ""
+    return (match.group("project_key") or "").strip().upper()
+
+
+def _build_discovery_jql(board_link: str) -> str:
+    """Build discovery JQL used to find ticket keys before detail fetch."""
+    configured_jql = _build_board_jql()
+    if configured_jql:
+        return configured_jql
+
+    project_key = _extract_project_key_from_link(board_link)
+    if not project_key:
+        return ""
+
+    order_by = _get_board_order_by()
+    base_jql = f"project = {project_key}"
+    if order_by and "order by" not in base_jql.lower():
+        return f"{base_jql} ORDER BY {order_by}"
+    return base_jql
 
 
 def _get_runtime_environment_mode() -> str:
@@ -136,6 +302,7 @@ def _process_jira_query(
 
     Supported query_name values:
     - board_ticket_keys
+    - search_ticket_keys
     - issue_detail
 
     Template for adding more queries:
@@ -167,15 +334,13 @@ def _process_jira_query(
             if jql_filter:
                 params["jql"] = jql_filter
 
-            response = requests.get(
-                endpoint,
+            response = _jira_get(
+                endpoint=endpoint,
                 auth=auth,
-                headers={"Accept": "application/json"},
                 params=params,
-                timeout=timeout_seconds,
-                verify=verify_tls,
+                timeout_seconds=timeout_seconds,
+                verify_tls=verify_tls,
             )
-            response.raise_for_status()
             payload = response.json()
 
             issues = payload.get("issues", [])
@@ -185,9 +350,60 @@ def _process_jira_query(
                     seen_keys.add(issue_key)
                     issue_keys.append(issue_key)
 
-            total = int(payload.get("total", 0))
+            total = _safe_int(payload.get("total"), None)
+            is_last = bool(payload.get("isLast", False))
             start_at += len(issues)
-            if start_at >= total or not issues:
+            if is_last or not issues or (total is not None and start_at >= total):
+                break
+
+        return issue_keys
+
+    if query_name == "search_ticket_keys":
+        jql = str(kwargs.get("jql", "")).strip()
+        if not jql:
+            raise ValueError("search_ticket_keys query requires jql")
+
+        endpoint = f"{ATLASSIAN_URL}{_get_jira_search_path()}"
+        issue_keys: list[str] = []
+        seen_keys: set[str] = set()
+        start_at = 0
+        next_page_token = ""
+
+        while True:
+            params: dict[str, Any] = {
+                "fields": "key",
+                "maxResults": DEFAULT_PAGE_SIZE,
+                "jql": jql,
+            }
+            if next_page_token:
+                params["nextPageToken"] = next_page_token
+            else:
+                params["startAt"] = start_at
+
+            response = _jira_get(
+                endpoint=endpoint,
+                auth=auth,
+                params=params,
+                timeout_seconds=timeout_seconds,
+                verify_tls=verify_tls,
+            )
+            payload = response.json()
+
+            issues = payload.get("issues", [])
+            for issue in issues:
+                issue_key = issue.get("key")
+                if issue_key and issue_key not in seen_keys:
+                    seen_keys.add(issue_key)
+                    issue_keys.append(issue_key)
+
+            next_page_token = str(payload.get("nextPageToken", "") or "").strip()
+            is_last = bool(payload.get("isLast", False))
+            total = _safe_int(payload.get("total"), None)
+            start_at += len(issues)
+
+            if next_page_token:
+                continue
+            if is_last or not issues or (total is not None and start_at >= total):
                 break
 
         return issue_keys
@@ -202,15 +418,13 @@ def _process_jira_query(
             raise ValueError("issue_detail query requires fields list")
 
         endpoint = f"{ATLASSIAN_URL}/rest/api/3/issue/{issue_key}"
-        response = requests.get(
-            endpoint,
+        response = _jira_get(
+            endpoint=endpoint,
             auth=auth,
-            headers={"Accept": "application/json"},
             params={"fields": ",".join(fields)},
-            timeout=timeout_seconds,
-            verify=verify_tls,
+            timeout_seconds=timeout_seconds,
+            verify_tls=verify_tls,
         )
-        response.raise_for_status()
         issue = response.json()
 
         issue_fields = issue.get("fields", {})
@@ -249,17 +463,29 @@ def _process_jira_query(
 
 def _build_tls_warning_policy_status() -> dict[str, Any]:
     """Return warning suppression policy decision and optional warning text."""
-    verify_tls = _get_verify_tls()
-    env_mode = _get_runtime_environment_mode()
-    suppression_requested = _is_truthy(
-        os.getenv("ATLASSIAN_SUPPRESS_INSECURE_TLS_WARNING", "false")
-    )
-    override_in_prod = _is_truthy(
-        os.getenv("ATLASSIAN_ALLOW_INSECURE_TLS_WARNING_SUPPRESSION_IN_PROD", "false")
+    return _build_tls_warning_policy_status_with_inputs(
+        verify_tls=_get_verify_tls(),
+        env_mode=_get_runtime_environment_mode(),
+        suppression_requested=_is_truthy(
+            os.getenv("ATLASSIAN_SUPPRESS_INSECURE_TLS_WARNING", "false")
+        ),
+        override_in_prod=_is_truthy(
+            os.getenv("ATLASSIAN_ALLOW_INSECURE_TLS_WARNING_SUPPRESSION_IN_PROD", "false")
+        ),
     )
 
+
+def _build_tls_warning_policy_status_with_inputs(
+    verify_tls: bool,
+    env_mode: str,
+    suppression_requested: bool,
+    override_in_prod: bool,
+) -> dict[str, Any]:
+    """Build TLS warning suppression policy from explicit inputs."""
+    normalized_env_mode = env_mode.lower().strip() or DEFAULT_RUNTIME_ENVIRONMENT
+
     status: dict[str, Any] = {
-        "environment_mode": env_mode,
+        "environment_mode": normalized_env_mode,
         "verify_tls": verify_tls,
         "suppression_mode": "disabled",
         "suppression_enabled": False,
@@ -277,7 +503,7 @@ def _build_tls_warning_policy_status() -> dict[str, Any]:
         )
         return status
 
-    if env_mode in {"prod", "production", "staging"} and not override_in_prod:
+    if normalized_env_mode in {"prod", "production", "staging"} and not override_in_prod:
         status["suppression_mode"] = "blocked-by-policy"
         status["warning"] = (
             "[security] TLS warning suppression blocked in production-like mode. "
@@ -340,9 +566,14 @@ def _validate_kanban_link(board_link: str) -> tuple[bool, str | None, str | None
         return False, None, "missing host"
 
     if ATLASSIAN_URL:
-        expected_host = urlparse(ATLASSIAN_URL).netloc.lower()
-        if expected_host and parsed.netloc.lower() != expected_host:
-            return False, None, f"host does not match ATLASSIAN_URL ({expected_host})"
+        expected_host = _canonical_host(urlparse(ATLASSIAN_URL))
+        parsed_host = _canonical_host(parsed)
+        allowed_hosts = {expected_host}
+        allowed_hosts.update(_get_allowed_host_aliases())
+
+        if expected_host and parsed_host not in allowed_hosts:
+            allowed_preview = ", ".join(sorted(host for host in allowed_hosts if host))
+            return False, None, f"host does not match allowed Atlassian hosts ({allowed_preview})"
 
     board_id = _extract_board_id_from_link(board_link)
     if not board_id:
@@ -355,6 +586,25 @@ def _fetch_board_ticket_keys(board_id: str) -> list[str]:
     """Fetch all issue keys from a Jira board using Agile API pagination."""
     issue_keys = _process_jira_query("board_ticket_keys", board_id=board_id)
     return [str(key) for key in issue_keys]
+
+
+def _fetch_search_ticket_keys(jql: str) -> list[str]:
+    """Fetch all issue keys via Jira search API pagination."""
+    issue_keys = _process_jira_query("search_ticket_keys", jql=jql)
+    return [str(key) for key in issue_keys]
+
+
+def _fetch_discovery_ticket_keys(board_id: str, board_link: str) -> tuple[list[str], str, str]:
+    """Fetch ticket keys using search JQL when possible, with board fallback."""
+    jql = _build_discovery_jql(board_link)
+    if jql:
+        try:
+            return _fetch_search_ticket_keys(jql), "search", jql
+        except (requests.RequestException, ValueError):
+            # Fall back to board discovery for resilience if search endpoint or query fails.
+            pass
+
+    return _fetch_board_ticket_keys(board_id), "board", jql
 
 
 def _fetch_issue_detail(issue_key: str, fields: list[str]) -> dict[str, Any]:
@@ -418,8 +668,16 @@ def parse_issue_dependencies(ticket_key: str, issuelinks: list[dict[str, Any]]) 
     blocking = []
     other_dependencies = []
 
+    if not isinstance(issuelinks, list):
+        issuelinks = []
+
     for link in issuelinks:
+        if not isinstance(link, dict):
+            continue
+
         link_type = link.get("type", {})
+        if not isinstance(link_type, dict):
+            link_type = {}
         link_name = link_type.get("name", "")
 
         target_issue = None
@@ -427,15 +685,15 @@ def parse_issue_dependencies(ticket_key: str, issuelinks: list[dict[str, Any]]) 
         relation_desc = ""
 
         if "inwardIssue" in link:
-            target_issue = link["inwardIssue"]
+            target_issue = link.get("inwardIssue")
             direction = "inward"
             relation_desc = link_type.get("inward", "")
         elif "outwardIssue" in link:
-            target_issue = link["outwardIssue"]
+            target_issue = link.get("outwardIssue")
             direction = "outward"
             relation_desc = link_type.get("outward", "")
 
-        if not target_issue:
+        if not isinstance(target_issue, dict):
             continue
 
         target_key = target_issue.get("key", "")
@@ -449,6 +707,8 @@ def parse_issue_dependencies(ticket_key: str, issuelinks: list[dict[str, Any]]) 
 
         # Get extra fields if present
         target_fields = target_issue.get("fields", {})
+        if not isinstance(target_fields, dict):
+            target_fields = {}
         target_summary = target_fields.get("summary", "")
         target_status = ""
         if isinstance(target_fields.get("status"), dict):
@@ -511,17 +771,26 @@ def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, An
     all_other_dependencies = []
 
     for ticket in tickets:
+        if not isinstance(ticket, dict):
+            continue
         ticket_key = ticket.get("ticket_key", "")
         deps = ticket.get("dependencies", {})
+        if not isinstance(deps, dict):
+            deps = {}
 
-        ticket_blockers = deps.get("blockers", [])
-        ticket_blocking = deps.get("blocking", [])
-        ticket_other = deps.get("other_dependencies", [])
+        ticket_blockers = deps.get("blockers", []) if isinstance(deps.get("blockers", []), list) else []
+        ticket_blocking = deps.get("blocking", []) if isinstance(deps.get("blocking", []), list) else []
+        ticket_other = deps.get("other_dependencies", []) if isinstance(deps.get("other_dependencies", []), list) else []
 
         blockers_count += len(ticket_blockers)
         blocking_count += len(ticket_blocking)
 
         for dep in ticket_blockers:
+            if not isinstance(dep, dict):
+                continue
+            target_ticket = str(dep.get("ticket_key", "")).strip()
+            if not target_ticket:
+                continue
             if dep.get("classification") == "intra_team":
                 intra_team_count += 1
             else:
@@ -529,14 +798,19 @@ def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, An
 
             all_blockers.append({
                 "source_ticket": ticket_key,
-                "target_ticket": dep["ticket_key"],
-                "relation": dep["relation_description"],
-                "classification": dep["classification"],
-                "summary": dep["summary"],
-                "status": dep["status"]
+                "target_ticket": target_ticket,
+                "relation": dep.get("relation_description", ""),
+                "classification": dep.get("classification", "inter_team"),
+                "summary": dep.get("summary", ""),
+                "status": dep.get("status", ""),
             })
 
         for dep in ticket_blocking:
+            if not isinstance(dep, dict):
+                continue
+            target_ticket = str(dep.get("ticket_key", "")).strip()
+            if not target_ticket:
+                continue
             if dep.get("classification") == "intra_team":
                 intra_team_count += 1
             else:
@@ -544,14 +818,19 @@ def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, An
 
             all_blocking.append({
                 "source_ticket": ticket_key,
-                "target_ticket": dep["ticket_key"],
-                "relation": dep["relation_description"],
-                "classification": dep["classification"],
-                "summary": dep["summary"],
-                "status": dep["status"]
+                "target_ticket": target_ticket,
+                "relation": dep.get("relation_description", ""),
+                "classification": dep.get("classification", "inter_team"),
+                "summary": dep.get("summary", ""),
+                "status": dep.get("status", ""),
             })
 
         for dep in ticket_other:
+            if not isinstance(dep, dict):
+                continue
+            target_ticket = str(dep.get("ticket_key", "")).strip()
+            if not target_ticket:
+                continue
             if dep.get("classification") == "intra_team":
                 intra_team_count += 1
             else:
@@ -559,11 +838,11 @@ def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, An
 
             all_other_dependencies.append({
                 "source_ticket": ticket_key,
-                "target_ticket": dep["ticket_key"],
-                "relation": dep["relation_description"],
-                "classification": dep["classification"],
-                "summary": dep["summary"],
-                "status": dep["status"]
+                "target_ticket": target_ticket,
+                "relation": dep.get("relation_description", ""),
+                "classification": dep.get("classification", "inter_team"),
+                "summary": dep.get("summary", ""),
+                "status": dep.get("status", ""),
             })
 
         total_dependencies += len(ticket_blockers) + len(ticket_blocking) + len(ticket_other)
@@ -580,6 +859,60 @@ def find_and_analyze_dependencies(tickets: list[dict[str, Any]]) -> dict[str, An
             "other_dependencies": all_other_dependencies,
         }
     }
+
+
+def _upsert_ticket_result(
+    tickets_by_key: dict[str, dict[str, Any]],
+    incoming_ticket: dict[str, Any],
+) -> None:
+    """Upsert ticket by key and merge source_links for multi-board membership."""
+    ticket_key = str(incoming_ticket.get("ticket_key", "")).strip()
+    if not ticket_key:
+        return
+
+    incoming_links_raw = incoming_ticket.get("source_links", [])
+    incoming_links = (
+        [str(link).strip() for link in incoming_links_raw if str(link).strip()]
+        if isinstance(incoming_links_raw, list)
+        else []
+    )
+
+    existing_ticket = tickets_by_key.get(ticket_key)
+    if existing_ticket is None:
+        new_ticket = dict(incoming_ticket)
+        new_ticket["source_links"] = sorted(set(incoming_links))
+        tickets_by_key[ticket_key] = new_ticket
+        return
+
+    merged_links = set(existing_ticket.get("source_links", []))
+    merged_links.update(incoming_links)
+    existing_ticket["source_links"] = sorted(link for link in merged_links if link)
+
+    # Fill empty values from incoming record without overriding existing populated data.
+    for key, value in incoming_ticket.items():
+        if key == "source_links":
+            continue
+        existing_value = existing_ticket.get(key)
+        if existing_value in (None, "", []):
+            existing_ticket[key] = value
+
+
+def _verify_tls_policy_guardrails() -> list[str]:
+    """Verify TLS policy enforces production-like suppression guardrails."""
+    warnings: list[str] = []
+    blocked_policy = _build_tls_warning_policy_status_with_inputs(
+        verify_tls=False,
+        env_mode="production",
+        suppression_requested=True,
+        override_in_prod=False,
+    )
+    if blocked_policy.get("suppression_mode") != "blocked-by-policy" or blocked_policy.get(
+        "suppression_enabled"
+    ):
+        warnings.append(
+            "[security] TLS suppression guardrail verification failed for production-like mode."
+        )
+    return warnings
 
 
 def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[str, Any]:
@@ -599,6 +932,7 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
         "unresolved_links": [],
         "partial_errors": [],
     }
+    tickets_by_key: dict[str, dict[str, Any]] = {}
 
     for board_link in normalized_links:
         is_valid, board_id, validation_error = _validate_kanban_link(board_link)
@@ -612,12 +946,14 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
             continue
 
         try:
-            ticket_keys = _fetch_board_ticket_keys(board_id)
+            ticket_keys, discovery_mode, discovery_jql = _fetch_discovery_ticket_keys(board_id, board_link)
             result["processed_links"].append(
                 {
                     "board_link": board_link,
                     "board_id": board_id,
                     "discovered_count": len(ticket_keys),
+                    "discovery_mode": discovery_mode,
+                    "discovery_jql": discovery_jql,
                 }
             )
         except (requests.RequestException, ValueError) as exc:
@@ -652,9 +988,14 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
             ticket_key = ticket.get("ticket_key", "")
             raw_links = ticket.get("issuelinks", [])
             ticket["dependencies"] = parse_issue_dependencies(ticket_key, raw_links)
+            _upsert_ticket_result(tickets_by_key, ticket)
 
-        result["results"].extend(board_results)
         result["partial_errors"].extend(board_errors)
+
+    result["results"] = sorted(
+        tickets_by_key.values(),
+        key=lambda ticket: ticket.get("ticket_key", ""),
+    )
 
     # Perform top-level dependency analysis
     dependency_analysis = find_and_analyze_dependencies(result["results"])
@@ -694,6 +1035,7 @@ def _collect_runtime_warnings(runtime_inputs: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     if not runtime_inputs.get("kanban_links"):
         warnings.append("[input-validation] ATLASSIAN_KANBAN_LINKS is empty.")
+    warnings.extend(_verify_tls_policy_guardrails())
     return warnings
 
 
