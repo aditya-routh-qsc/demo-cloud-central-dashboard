@@ -21,3 +21,18 @@ The dashboard SHALL populate status and assignee filter options from the full re
 #### Scenario: Empty page does not collapse options
 - **WHEN** current paginated results are empty but matching records exist in the broader filtered dataset
 - **THEN** status and assignee filter controls continue to show available option values instead of degrading to only All
+
+### Requirement: Fixed Maximum Ticket Rows for Filtered Retrieval
+The dashboard SHALL remove user-managed row-count filtering and SHALL request tickets at the maximum supported row limit for each filtered retrieval.
+
+#### Scenario: Rows filter control is not user-visible
+- **WHEN** a user opens the global filter section
+- **THEN** no Rows/page-size input is presented as part of interactive filter controls
+
+#### Scenario: Ticket retrieval uses max supported rows
+- **WHEN** the dashboard issues filtered ticket retrieval requests
+- **THEN** requests use the maximum supported ticket limit rather than a user-provided row-count value
+
+#### Scenario: URL state omits user-managed row-count parameter
+- **WHEN** filter state is serialized to or restored from URL query state
+- **THEN** row-count values are not represented as user-adjustable filter parameters

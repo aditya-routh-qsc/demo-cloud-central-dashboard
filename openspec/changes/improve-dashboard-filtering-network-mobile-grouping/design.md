@@ -50,6 +50,42 @@ The existing frontend capability already defines global filters, sync visibility
 - Alternatives considered:
   - Generic empty message: rejected as too ambiguous.
 
+6. Desktop dependency graph uses explicit semantic legends and deterministic visual mappings.
+- Rationale: Users cannot reliably interpret graph meaning without visible legend keys and stable visual encoding rules.
+- Decision details:
+  - Node color encodes ticket issue type.
+  - Edge color encodes dependency type.
+  - Edge line style encodes classification boundary.
+  - When multiple dependency records exist for the same source-target pair, render separate edges per dependency type (do not collapse).
+  - Preserve a deterministic fallback style for unknown or missing values.
+- Mapping matrix:
+
+| Semantic Dimension | Source Field | Visual Channel | Mapping Rule | Fallback |
+|---|---|---|---|---|
+| Node issue type | `node.issue_type` | Node fill color | Canonical palette per normalized issue type (lowercase, trimmed) | `unknown` node color |
+| Edge dependency type | `edge.dependency_type` | Edge line and arrow color | Canonical palette per normalized dependency type | `unknown` edge color |
+| Edge classification | `edge.classification` | Edge line style | `inter_team` dashed, `intra_team` solid | default solid |
+| Parallel relation rendering | `edge.source_ticket`, `edge.target_ticket`, `edge.dependency_type` | Edge identity | Include dependency type in edge identity to keep same pair/type combinations distinct | n/a |
+
+- Initial canonical issue-type set:
+  - `bug`, `story`, `task`, `epic`, `sub-task`, `unknown`
+- Initial canonical dependency-type set:
+  - `blockers`, `blocks`, `depends_on`, `relates_to`, `duplicates`, `unknown`
+- Alternatives considered:
+  - Dynamic legend from all observed values only: rejected for unstable color memory between filter states.
+  - Single edge style with detail only in node panel: rejected for low at-a-glance interpretability.
+
+7. Remove end-user Rows filter and use fixed maximum ticket fetch size for filtered ticket retrieval.
+- Rationale: Row-count controls add friction and create inconsistent discovery experiences when users unintentionally reduce result volume.
+- Decision details:
+  - Remove the Rows input from filter controls.
+  - Frontend ticket retrieval always requests the API maximum row limit.
+  - URL/query-state handling does not expose a user-managed rows value.
+  - Backend limit guardrail remains authoritative to prevent over-fetch beyond supported ceiling.
+- Alternatives considered:
+  - Keep Rows input with a higher default: rejected because users still accidentally narrow visibility.
+  - Introduce infinite scrolling pagination: rejected for this change scope.
+
 ## Risks / Trade-offs
 
 - [Risk] More complex filter model increases UI state synchronization complexity. -> Mitigation: Keep one canonical filter state object and deterministic serialization/deserialization to URL query.

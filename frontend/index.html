@@ -15,137 +15,146 @@
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
 
-  <header class="topbar panel">
-    <div class="brand-wrap">
-      <div class="brand-dot" aria-hidden="true"></div>
-      <div>
-        <h1>Cloud Central Dashboard</h1>
-        <p>Jira runtime intelligence for dependency and risk visibility</p>
+  <div class="dashboard-shell">
+    <header class="topbar panel">
+      <div class="brand-wrap">
+        <div class="brand-dot" aria-hidden="true"></div>
+        <div>
+          <h1>Cloud Central Dashboard</h1>
+          <p>Jira runtime intelligence for dependency and risk visibility</p>
+        </div>
       </div>
-    </div>
-    <div class="sync-wrap">
-      <span id="syncChip" class="sync-chip">Sync status: loading...</span>
-      <button id="manualSyncBtn" class="action-btn" type="button">Sync now</button>
-    </div>
-  </header>
+      <div class="sync-wrap">
+        <span id="syncChip" class="sync-chip">Sync status: loading...</span>
+        <button id="manualSyncBtn" class="action-btn" type="button">Sync now</button>
+      </div>
+    </header>
 
-  <section class="filters panel" aria-label="Unified filters">
-    <div class="field">
-      <label for="searchInput">Search</label>
-      <input id="searchInput" placeholder="Ticket key or summary" />
-    </div>
-
-    <div class="field">
-      <label for="statusSelect">Status</label>
-      <select id="statusSelect" multiple size="5" aria-label="Status filter">
-        <option value="">All</option>
-      </select>
-      <p id="statusSummary" class="field-summary">All statuses</p>
-    </div>
-
-    <div class="field">
-      <label for="assigneeSelect">Assignee</label>
-      <select id="assigneeSelect" multiple size="5" aria-label="Assignee filter">
-        <option value="">All</option>
-      </select>
-      <p id="assigneeSummary" class="field-summary">All assignees</p>
-    </div>
-
-    <div class="field">
-      <label for="boardInput">Board ID</label>
-      <input id="boardInput" placeholder="1863" />
-    </div>
-
-    <div class="field field-tight">
-      <label for="limitInput">Rows</label>
-      <input id="limitInput" type="number" min="1" max="1000" value="200" />
-    </div>
-
-    <div class="filters-actions">
-      <button id="applyFiltersBtn" class="action-btn" type="button">Apply</button>
-      <button id="resetFiltersBtn" class="ghost-btn" type="button">Reset</button>
-    </div>
-  </section>
-
-  <nav class="tabs panel" aria-label="Dashboard views">
-    <button class="tab is-active" data-tab="overview" type="button">Overview</button>
-    <button class="tab" data-tab="network" type="button">Network</button>
-    <button class="tab" data-tab="metrics" type="button">Metrics</button>
-    <button class="tab" data-tab="tickets" type="button">Tickets</button>
-  </nav>
-
-  <main>
-    <section id="overview" class="view is-active">
-      <div class="kpi-grid">
-        <article class="kpi panel">
-          <h3>Total active</h3>
-          <p id="kpiTotalActive" class="kpi-value">-</p>
-        </article>
-        <article class="kpi panel">
-          <h3>Open bugs</h3>
-          <p id="kpiOpenBugs" class="kpi-value">-</p>
-        </article>
-        <article class="kpi panel">
-          <h3>Stale 14d+</h3>
-          <p id="kpiStale" class="kpi-value">-</p>
-        </article>
-        <article class="kpi panel">
-          <h3>Filtered total</h3>
-          <p id="kpiFilteredTotal" class="kpi-value">-</p>
-        </article>
+    <section class="filters panel" aria-label="Unified filters">
+      <div class="filters-primary">
+        <div class="field filters-search">
+          <label for="searchInput">Search</label>
+          <input id="searchInput" placeholder="Ticket key or summary" />
+        </div>
+        <button id="toggleAdvancedFiltersBtn" class="ghost-btn filters-toggle" type="button" aria-expanded="true" aria-controls="advancedFilters">
+          Advanced filters
+        </button>
       </div>
 
-      <div class="split-grid">
-        <article class="panel">
-          <h3>Status mix</h3>
-          <canvas id="statusChart" height="180"></canvas>
-        </article>
-        <article class="panel">
-          <h3>Dependency mix</h3>
-          <canvas id="dependencyChart" height="180"></canvas>
-        </article>
-      </div>
+      <div id="advancedFilters" class="filters-advanced" data-collapsible-panel>
+        <div class="field">
+          <label for="statusSelect">Status</label>
+          <select id="statusSelect" multiple size="5" aria-label="Status filter">
+            <option value="">All</option>
+          </select>
+          <p id="statusSummary" class="field-summary">All statuses</p>
+        </div>
 
-      <article class="panel mobile-note">
-        <h3>Mobile mode</h3>
-        <p>This interface intentionally uses read-only summary mode on mobile screens.</p>
-      </article>
-    </section>
+        <div class="field">
+          <label for="assigneeSelect">Assignee</label>
+          <select id="assigneeSelect" multiple size="5" aria-label="Assignee filter">
+            <option value="">All</option>
+          </select>
+          <p id="assigneeSummary" class="field-summary">All assignees</p>
+        </div>
 
-    <section id="network" class="view">
-      <div class="split-grid">
-        <article class="panel graph-panel">
-          <h3>Dependency graph</h3>
-          <div id="networkEmptyState" class="network-empty muted"></div>
-          <div id="networkGraph"></div>
-          <div id="networkMobileSummary" class="network-mobile-summary"></div>
-        </article>
-        <article class="panel details-panel">
-          <h3>Node details</h3>
-          <div id="nodeDetails" class="muted">Select a node to inspect context and jump to Jira.</div>
-        </article>
+        <div class="field">
+          <label for="boardInput">Board ID</label>
+          <input id="boardInput" placeholder="1863" />
+        </div>
+
+        <div class="filters-actions">
+          <button id="applyFiltersBtn" class="action-btn" type="button">Apply</button>
+          <button id="resetFiltersBtn" class="ghost-btn" type="button">Reset</button>
+        </div>
       </div>
     </section>
 
-    <section id="metrics" class="view">
-      <div class="split-grid">
-        <article class="panel">
-          <h3>Story points by status</h3>
-          <canvas id="storyPointsChart" height="180"></canvas>
-        </article>
-        <article class="panel">
-          <h3>Top assignee workload</h3>
-          <canvas id="assigneeChart" height="180"></canvas>
-        </article>
-      </div>
-    </section>
+    <div class="shell-layout">
+      <aside class="sidebar panel" aria-label="Dashboard views">
+        <nav class="tabs" aria-label="Dashboard views">
+          <button class="tab is-active" data-tab="overview" type="button">Overview</button>
+          <button class="tab" data-tab="network" type="button">Network</button>
+          <button class="tab" data-tab="metrics" type="button">Metrics</button>
+          <button class="tab" data-tab="tickets" type="button">Tickets</button>
+        </nav>
+      </aside>
 
-    <section id="tickets" class="view">
-      <article class="panel">
-        <h3>Ticket explorer</h3>
-        <div id="ticketsGroups" class="ticket-groups"></div>
-      </article>
-    </section>
-  </main>
+      <main class="content-shell">
+        <section id="overview" class="view is-active">
+          <div class="kpi-grid">
+            <article class="kpi panel">
+              <h3>Total active</h3>
+              <p id="kpiTotalActive" class="kpi-value">-</p>
+            </article>
+            <article class="kpi panel">
+              <h3>Open bugs</h3>
+              <p id="kpiOpenBugs" class="kpi-value">-</p>
+            </article>
+            <article class="kpi panel">
+              <h3>Stale 14d+</h3>
+              <p id="kpiStale" class="kpi-value">-</p>
+            </article>
+            <article class="kpi panel">
+              <h3>Filtered total</h3>
+              <p id="kpiFilteredTotal" class="kpi-value">-</p>
+            </article>
+          </div>
+
+          <div class="split-grid">
+            <article class="panel">
+              <h3>Status mix</h3>
+              <canvas id="statusChart" height="180"></canvas>
+            </article>
+            <article class="panel">
+              <h3>Dependency mix</h3>
+              <canvas id="dependencyChart" height="180"></canvas>
+            </article>
+          </div>
+
+          <article class="panel mobile-note">
+            <h3>Mobile mode</h3>
+            <p>This interface intentionally uses read-only summary mode on mobile screens.</p>
+          </article>
+        </section>
+
+        <section id="network" class="view">
+          <div class="split-grid">
+            <article class="panel graph-panel">
+              <h3>Dependency graph</h3>
+              <div id="networkEmptyState" class="network-empty muted"></div>
+              <div id="networkGraph"></div>
+              <div id="networkMobileSummary" class="network-mobile-summary"></div>
+              <div id="networkLegend" class="network-legend"></div>
+            </article>
+            <article class="panel details-panel">
+              <h3>Node details</h3>
+              <div id="nodeDetails" class="muted">Select a node to inspect context and jump to Jira.</div>
+            </article>
+          </div>
+        </section>
+
+        <section id="metrics" class="view">
+          <div class="split-grid">
+            <article class="panel">
+              <h3>Story points by status</h3>
+              <canvas id="storyPointsChart" height="180"></canvas>
+            </article>
+            <article class="panel">
+              <h3>Top assignee workload</h3>
+              <canvas id="assigneeChart" height="180"></canvas>
+            </article>
+          </div>
+        </section>
+
+        <section id="tickets" class="view">
+          <article class="panel">
+            <h3>Ticket explorer</h3>
+            <div id="ticketsGroups" class="ticket-groups"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
 </body>
 </html>

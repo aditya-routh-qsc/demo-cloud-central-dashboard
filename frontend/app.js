@@ -6,7 +6,6 @@ const state = {
     excludedStatuses: [],
     excludedAssignees: [],
     boardId: "",
-    limit: 200,
     offset: 0,
   },
   filterOptions: {
@@ -23,25 +22,79 @@ const state = {
   jiraDomain: "qsc.atlassian.net",
   charts: {},
   cy: null,
+  ui: {
+    advancedFiltersOpen: true,
+  },
 };
 
 const pollIntervalMs = 15000;
 const mobileBreakpoint = 900;
+const maxTicketLimit = 1000;
+
+const GRAPH_SEMANTICS = {
+  issueTypes: [
+    { key: "bug", label: "Bug", color: "#ff6b6b" },
+    { key: "story", label: "Story", color: "#1dd3ff" },
+    { key: "task", label: "Task", color: "#3ad29f" },
+    { key: "epic", label: "Epic", color: "#9b7bff" },
+    { key: "sub_task", label: "Sub-task", color: "#f7b267" },
+    { key: "unknown", label: "Unknown", color: "#7b8ca6" },
+  ],
+  dependencyTypes: [
+    { key: "blockers", label: "Blockers", color: "#ff9f43" },
+    { key: "blocks", label: "Blocks", color: "#ff6b6b" },
+    { key: "depends_on", label: "Depends on", color: "#3ad29f" },
+    { key: "relates_to", label: "Relates to", color: "#1dd3ff" },
+    { key: "duplicates", label: "Duplicates", color: "#f85d9f" },
+    { key: "unknown", label: "Unknown", color: "#7b8ca6" },
+  ],
+  classifications: [
+    { key: "intra_team", label: "Intra-team", lineStyle: "solid", color: "#3ad29f" },
+    { key: "inter_team", label: "Inter-team", lineStyle: "dashed", color: "#ff9f43" },
+    { key: "unknown", label: "Unknown", lineStyle: "solid", color: "#7b8ca6" },
+  ],
+};
+
+const ISSUE_TYPE_BY_KEY = new Map(GRAPH_SEMANTICS.issueTypes.map((entry) => [entry.key, entry]));
+const DEPENDENCY_TYPE_BY_KEY = new Map(GRAPH_SEMANTICS.dependencyTypes.map((entry) => [entry.key, entry]));
+const CLASSIFICATION_BY_KEY = new Map(GRAPH_SEMANTICS.classifications.map((entry) => [entry.key, entry]));
+const ISSUE_TYPE_ALIASES = new Map([
+  ["subtask", "sub_task"],
+  ["sub_task", "sub_task"],
+  ["sub-task", "sub_task"],
+  ["technical_task", "task"],
+  ["development_task", "task"],
+  ["feature", "story"],
+]);
+const DEPENDENCY_TYPE_ALIASES = new Map([
+  ["blocking", "blocks"],
+  ["blocker", "blockers"],
+  ["blockers", "blockers"],
+  ["blocks", "blocks"],
+  ["depends_upon", "depends_on"],
+  ["depends_on", "depends_on"],
+  ["relates", "relates_to"],
+  ["relates_to", "relates_to"],
+  ["duplicate", "duplicates"],
+  ["duplicates", "duplicates"],
+]);
 
 const el = {
   syncChip: document.getElementById("syncChip"),
   manualSyncBtn: document.getElementById("manualSyncBtn"),
+  toggleAdvancedFiltersBtn: document.getElementById("toggleAdvancedFiltersBtn"),
+  advancedFilters: document.getElementById("advancedFilters"),
   searchInput: document.getElementById("searchInput"),
   statusSelect: document.getElementById("statusSelect"),
   assigneeSelect: document.getElementById("assigneeSelect"),
   statusSummary: document.getElementById("statusSummary"),
   assigneeSummary: document.getElementById("assigneeSummary"),
   boardInput: document.getElementById("boardInput"),
-  limitInput: document.getElementById("limitInput"),
   applyFiltersBtn: document.getElementById("applyFiltersBtn"),
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
   ticketsGroups: document.getElementById("ticketsGroups"),
   nodeDetails: document.getElementById("nodeDetails"),
+  networkLegend: document.getElementById("networkLegend"),
   networkEmptyState: document.getElementById("networkEmptyState"),
   networkMobileSummary: document.getElementById("networkMobileSummary"),
   networkGraph: document.getElementById("networkGraph"),
@@ -50,6 +103,31 @@ const el = {
   kpiStale: document.getElementById("kpiStale"),
   kpiFilteredTotal: document.getElementById("kpiFilteredTotal"),
 };
+
+function isNarrowViewport() {
+  return window.innerWidth <= mobileBreakpoint;
+}
+
+function syncAdvancedFiltersDisclosure() {
+  if (!el.toggleAdvancedFiltersBtn || !el.advancedFilters) {
+    return;
+  }
+
+  const isOpen = state.ui.advancedFiltersOpen;
+  el.toggleAdvancedFiltersBtn.setAttribute("aria-expanded", String(isOpen));
+  el.toggleAdvancedFiltersBtn.textContent = isOpen ? "Hide advanced filters" : "Show advanced filters";
+  el.advancedFilters.classList.toggle("is-collapsed", !isOpen);
+  el.advancedFilters.hidden = !isOpen;
+}
+
+function setAdvancedFiltersOpen(nextOpen, options = {}) {
+  state.ui.advancedFiltersOpen = Boolean(nextOpen);
+  syncAdvancedFiltersDisclosure();
+
+  if (options.focusToggle && el.toggleAdvancedFiltersBtn) {
+    el.toggleAdvancedFiltersBtn.focus();
+  }
+}
 
 function escapeHtml(value) {
   return String(value || "")
@@ -76,6 +154,176 @@ function uniqueValues(values) {
     items.push(value);
   }
   return items;
+}
+
+function normalizeSemanticKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function getIssueTypeEntry(rawValue) {
+  const normalizedValue = normalizeSemanticKey(rawValue);
+  const canonicalValue = ISSUE_TYPE_ALIASES.get(normalizedValue) || normalizedValue;
+  if (ISSUE_TYPE_BY_KEY.has(canonicalValue)) {
+    return ISSUE_TYPE_BY_KEY.get(canonicalValue);
+  }
+
+  // Fallback matching handles verbose Jira issue type labels such as
+  // "Technical Task" or "Epic Feature" without requiring exact aliases.
+  if (canonicalValue.includes("epic")) {
+    return ISSUE_TYPE_BY_KEY.get("epic");
+  }
+  if (canonicalValue.includes("task")) {
+    return ISSUE_TYPE_BY_KEY.get("task");
+  }
+  if (canonicalValue.includes("story")) {
+    return ISSUE_TYPE_BY_KEY.get("story");
+  }
+  if (canonicalValue.includes("bug")) {
+    return ISSUE_TYPE_BY_KEY.get("bug");
+  }
+
+  return ISSUE_TYPE_BY_KEY.get("unknown");
+}
+
+function getDependencyTypeEntry(rawValue) {
+  const normalizedValue = normalizeSemanticKey(rawValue);
+  const canonicalValue = DEPENDENCY_TYPE_ALIASES.get(normalizedValue) || normalizedValue;
+  return DEPENDENCY_TYPE_BY_KEY.get(canonicalValue) || DEPENDENCY_TYPE_BY_KEY.get("unknown");
+}
+
+function getClassificationEntry(rawValue) {
+  const normalizedValue = normalizeSemanticKey(rawValue);
+  return CLASSIFICATION_BY_KEY.get(normalizedValue) || CLASSIFICATION_BY_KEY.get("unknown");
+}
+
+function buildNetworkStyles() {
+  const styles = [
+    {
+      selector: "node",
+      style: {
+        "background-color": ISSUE_TYPE_BY_KEY.get("unknown").color,
+        color: "#eef7ff",
+        "font-size": 9,
+        "text-valign": "center",
+        label: "data(ticket_key)",
+      },
+    },
+    {
+      selector: "edge",
+      style: {
+        width: 2,
+        "line-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
+        "target-arrow-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
+        "source-arrow-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
+        "source-arrow-shape": "none",
+        "target-arrow-shape": "triangle",
+        "curve-style": "bezier",
+      },
+    },
+  ];
+
+  for (const entry of GRAPH_SEMANTICS.issueTypes) {
+    styles.push({
+      selector: `node[issue_type_key = '${entry.key}']`,
+      style: {
+        "background-color": entry.color,
+      },
+    });
+  }
+
+  for (const entry of GRAPH_SEMANTICS.dependencyTypes) {
+    styles.push({
+      selector: `edge[dependency_type_key = '${entry.key}']`,
+      style: {
+        "line-color": entry.color,
+        "target-arrow-color": entry.color,
+        "source-arrow-color": entry.color,
+      },
+    });
+  }
+
+  styles.push({
+    selector: "edge[dependency_type_key = 'relates_to']",
+    style: {
+      "source-arrow-shape": "none",
+      "target-arrow-shape": "none",
+    },
+  });
+
+  for (const entry of GRAPH_SEMANTICS.classifications) {
+    styles.push({
+      selector: `edge[classification_key = '${entry.key}']`,
+      style: {
+        "line-style": entry.lineStyle,
+      },
+    });
+  }
+
+  return styles;
+}
+
+function renderLegendList(entries, variant) {
+  return entries
+    .map((entry) => {
+      if (variant === "line") {
+        return `
+          <li class="legend-item">
+            <span class="legend-line ${entry.lineStyle}" style="color: ${entry.color};"></span>
+            <span>${escapeHtml(entry.label)}</span>
+          </li>
+        `;
+      }
+
+      return `
+        <li class="legend-item">
+          <span class="legend-swatch" style="background-color: ${entry.color};"></span>
+          <span>${escapeHtml(entry.label)}</span>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function renderNetworkLegend() {
+  if (!el.networkLegend) {
+    return;
+  }
+
+  el.networkLegend.className = "network-legend is-visible";
+  el.networkLegend.innerHTML = `
+    <div class="legend-grid">
+      <section class="legend-section">
+        <h4>Ticket types</h4>
+        <ul class="legend-list">
+          ${renderLegendList(GRAPH_SEMANTICS.issueTypes, "swatch")}
+        </ul>
+      </section>
+      <section class="legend-section">
+        <h4>Dependency types</h4>
+        <ul class="legend-list">
+          ${renderLegendList(GRAPH_SEMANTICS.dependencyTypes, "swatch")}
+        </ul>
+      </section>
+      <section class="legend-section">
+        <h4>Classification</h4>
+        <ul class="legend-list">
+          ${renderLegendList(GRAPH_SEMANTICS.classifications, "line")}
+        </ul>
+      </section>
+    </div>
+  `;
+}
+
+function hideNetworkLegend() {
+  if (!el.networkLegend) {
+    return;
+  }
+
+  el.networkLegend.className = "network-legend";
+  el.networkLegend.innerHTML = "";
 }
 
 function parseStatusQuery(params) {
@@ -292,7 +540,6 @@ function applyStateToQuery() {
     params.append("assignee_exclude", assignee);
   }
   if (state.filters.boardId) params.set("board", state.filters.boardId);
-  params.set("limit", String(state.filters.limit));
   if (state.filters.offset) params.set("offset", String(state.filters.offset));
   const query = params.toString();
   history.replaceState(null, "", query ? `?${query}` : location.pathname);
@@ -306,11 +553,7 @@ function readStateFromQuery() {
   state.filters.excludedStatuses = parseStatusExcludeQuery(params);
   state.filters.excludedAssignees = parseAssigneeExcludeQuery(params);
   state.filters.boardId = params.get("board") || "";
-  state.filters.limit = Number(params.get("limit") || 200);
   state.filters.offset = Number(params.get("offset") || 0);
-  if (!Number.isFinite(state.filters.limit) || state.filters.limit < 1 || state.filters.limit > 1000) {
-    state.filters.limit = 200;
-  }
   if (!Number.isFinite(state.filters.offset) || state.filters.offset < 0) {
     state.filters.offset = 0;
   }
@@ -319,7 +562,6 @@ function readStateFromQuery() {
 function syncInputsFromState() {
   el.searchInput.value = state.filters.search;
   el.boardInput.value = state.filters.boardId;
-  el.limitInput.value = String(state.filters.limit);
   setSelectedValues(el.statusSelect, state.filters.statuses);
   setSelectedValues(el.assigneeSelect, state.filters.assignees);
   updateFilterSummaries();
@@ -341,7 +583,7 @@ function buildTicketsQuery() {
     params.append("assignee_exclude", assignee);
   }
   if (state.filters.boardId) params.set("board_id", state.filters.boardId);
-  params.set("limit", String(state.filters.limit));
+  params.set("limit", String(maxTicketLimit));
   params.set("offset", String(state.filters.offset));
   return `/api/tickets?${params.toString()}`;
 }
@@ -388,13 +630,6 @@ function updateFilterStateFromInputs() {
   );
 
   state.filters.boardId = el.boardInput.value.trim();
-  state.filters.limit = Number(el.limitInput.value || 200);
-  if (!Number.isFinite(state.filters.limit) || state.filters.limit < 1) {
-    state.filters.limit = 200;
-  }
-  if (state.filters.limit > 1000) {
-    state.filters.limit = 1000;
-  }
   state.filters.offset = 0;
   applyStateToQuery();
   updateFilterSummaries();
@@ -618,55 +853,51 @@ function renderMobileDependencySummary() {
   `;
 }
 
-function buildDependencyDetailsForNode(nodeId, networkData) {
-  const nodes = Array.isArray(networkData?.nodes) ? networkData.nodes : [];
-  const edges = Array.isArray(networkData?.edges) ? networkData.edges : [];
-  const nodeById = new Map(nodes.map((node) => [String(node.id || node.ticket_key || ""), node]));
-
-  const outgoing = [];
+function renderNodeDependencyDetails(nodeId) {
+  const network = state.network || { nodes: [], edges: [] };
+  const nodeById = new Map((network.nodes || []).map((item) => [item.id, item]));
   const incoming = [];
+  const outgoing = [];
 
-  for (const edge of edges) {
-    const source = String(edge.source_ticket || "");
-    const target = String(edge.target_ticket || "");
-    if (source === nodeId) {
-      outgoing.push(edge);
-    }
-    if (target === nodeId) {
+  for (const edge of network.edges || []) {
+    if (edge.target_ticket === nodeId) {
       incoming.push(edge);
+    }
+    if (edge.source_ticket === nodeId) {
+      outgoing.push(edge);
     }
   }
 
-  outgoing.sort((a, b) => String(a.target_ticket || "").localeCompare(String(b.target_ticket || "")));
-  incoming.sort((a, b) => String(a.source_ticket || "").localeCompare(String(b.source_ticket || "")));
-
-  const toListHtml = (rows, counterpartKey) => {
-    if (!rows.length) {
-      return "<li class='muted'>None</li>";
-    }
-
-    return rows.map((edge) => {
-      const counterpartTicket = String(edge[counterpartKey] || "");
-      const counterpartNode = nodeById.get(counterpartTicket) || {};
-      const counterpartStatus = counterpartNode.status || "Unknown";
-      const relation = edge.relation_name || edge.relation_description || edge.dependency_type || "dependency";
-      const classification = edge.classification || "unclassified";
-      return `<li>
-        <strong>${escapeHtml(counterpartTicket)}</strong>
-        <span class="muted">(${escapeHtml(counterpartStatus)})</span>
-        <br/>
-        <span>${escapeHtml(relation)}</span>
-        <span class="muted"> | ${escapeHtml(classification)}</span>
-      </li>`;
-    }).join("");
+  const formatEdge = (edge, isIncoming) => {
+    const otherKey = isIncoming ? edge.source_ticket : edge.target_ticket;
+    const otherNode = nodeById.get(otherKey) || {};
+    const relation = edge.relation_description || edge.relation_name || edge.dependency_type || "dependency";
+    const classification = edge.classification || "unknown";
+    const status = otherNode.status || "Unknown";
+    return `<li><strong>${escapeHtml(otherKey)}</strong> (${escapeHtml(status)}) - ${escapeHtml(relation)} [${escapeHtml(classification)}]</li>`;
   };
 
-  return {
-    outgoingHtml: toListHtml(outgoing, "target_ticket"),
-    incomingHtml: toListHtml(incoming, "source_ticket"),
-    outgoingCount: outgoing.length,
-    incomingCount: incoming.length,
-  };
+  const incomingHtml = incoming.length
+    ? `<ul>${incoming.slice(0, 8).map((edge) => formatEdge(edge, true)).join("")}</ul>`
+    : "<p class='muted'>No incoming dependencies.</p>";
+
+  const outgoingHtml = outgoing.length
+    ? `<ul>${outgoing.slice(0, 8).map((edge) => formatEdge(edge, false)).join("")}</ul>`
+    : "<p class='muted'>No outgoing dependencies.</p>";
+
+  const hiddenIncoming = incoming.length > 8 ? `<p class='muted'>+${incoming.length - 8} more incoming</p>` : "";
+  const hiddenOutgoing = outgoing.length > 8 ? `<p class='muted'>+${outgoing.length - 8} more outgoing</p>` : "";
+
+  return `
+    <p><strong>Dependency details</strong></p>
+    <p>Incoming: ${incoming.length} | Outgoing: ${outgoing.length}</p>
+    <p><strong>Incoming (depends on this ticket)</strong></p>
+    ${incomingHtml}
+    ${hiddenIncoming}
+    <p><strong>Outgoing (this ticket depends on)</strong></p>
+    ${outgoingHtml}
+    ${hiddenOutgoing}
+  `;
 }
 
 function renderNetwork() {
@@ -680,6 +911,7 @@ function renderNetwork() {
 
   if (window.innerWidth <= mobileBreakpoint) {
     el.networkGraph.style.display = "none";
+    hideNetworkLegend();
     renderMobileDependencySummary();
     renderNetworkEmptyState("Mobile summary mode: interactive graph is optimized for desktop.");
     return;
@@ -688,6 +920,7 @@ function renderNetwork() {
   el.networkGraph.style.display = "block";
   el.networkMobileSummary.className = "network-mobile-summary";
   el.networkMobileSummary.innerHTML = "";
+  renderNetworkLegend();
 
   if (state.networkLoadError) {
     renderNetworkEmptyState("Dependency graph unavailable. Check API/network logs and retry.", true);
@@ -707,28 +940,34 @@ function renderNetwork() {
 
   const elements = [];
   for (const node of data.nodes || []) {
+    const issueType = String(node.issue_type || "").trim();
     elements.push({
       data: {
         id: node.id,
         ticket_key: node.ticket_key,
         summary: node.summary || "",
         status: node.status || "",
-        assignee: node.assignee || "",
         reporter: node.reporter || "",
-        issue_type: node.issue_type || "",
-        priority: node.priority || "",
-        story_points: node.story_points,
+        issue_type: issueType,
+        issue_type_key: getIssueTypeEntry(issueType).key,
       },
     });
   }
 
   for (const edge of data.edges || []) {
+    const dependencyType = String(edge.relation_description || edge.relation_name || edge.dependency_type || "").trim();
+    const classification = String(edge.classification || "").trim();
     elements.push({
       data: {
-        id: `${edge.source_ticket}->${edge.target_ticket}`,
+        id: `${edge.source_ticket}->${edge.target_ticket}->${normalizeSemanticKey(dependencyType)}->${normalizeSemanticKey(classification)}`,
         source: edge.source_ticket,
         target: edge.target_ticket,
-        classification: edge.classification || "",
+        relation_name: edge.relation_name || "",
+        relation_description: edge.relation_description || "",
+        dependency_type: dependencyType,
+        dependency_type_key: getDependencyTypeEntry(dependencyType).key,
+        classification,
+        classification_key: getClassificationEntry(classification).key,
       },
     });
   }
@@ -736,36 +975,7 @@ function renderNetwork() {
   state.cy = cyCtor({
     container: el.networkGraph,
     elements,
-    style: [
-      {
-        selector: "node",
-        style: {
-          "background-color": "#1dd3ff",
-          "color": "#eef7ff",
-          "font-size": 9,
-          "text-valign": "center",
-          label: "data(ticket_key)",
-        },
-      },
-      {
-        selector: "edge",
-        style: {
-          width: 2,
-          "line-color": "#3ad29f",
-          "target-arrow-color": "#3ad29f",
-          "target-arrow-shape": "triangle",
-          "curve-style": "bezier",
-        },
-      },
-      {
-        selector: "edge[classification = 'inter_team']",
-        style: {
-          "line-style": "dashed",
-          "line-color": "#ff9f43",
-          "target-arrow-color": "#ff9f43",
-        },
-      },
-    ],
+    style: buildNetworkStyles(),
     layout: {
       name: "cose",
       animate: true,
@@ -776,19 +986,13 @@ function renderNetwork() {
   state.cy.on("tap", "node", (event) => {
     const node = event.target.data();
     const issueUrl = jiraIssueUrl(node.id);
-    const deps = buildDependencyDetailsForNode(String(node.id || ""), data);
+    const dependencyDetails = renderNodeDependencyDetails(node.id);
     el.nodeDetails.innerHTML = `<p><strong>${escapeHtml(node.ticket_key)}</strong></p>
       <p>${escapeHtml(node.summary || "No summary")}</p>
       <p>Status: ${escapeHtml(node.status || "Unknown")}</p>
-      <p>Assignee: ${escapeHtml(node.assignee || "Unassigned")}</p>
       <p>Reporter: ${escapeHtml(node.reporter || "Unknown")}</p>
-      <p>Type: ${escapeHtml(node.issue_type || "Unknown")}</p>
-      <p>Priority: ${escapeHtml(node.priority || "Unknown")}</p>
-      <p>Story points: ${node.story_points ?? "-"}</p>
-      <p><strong>Dependencies Out (${deps.outgoingCount})</strong></p>
-      <ul>${deps.outgoingHtml}</ul>
-      <p><strong>Dependencies In (${deps.incomingCount})</strong></p>
-      <ul>${deps.incomingHtml}</ul>
+      <p>Ticket type: ${escapeHtml(node.issue_type || "Unknown")}</p>
+      ${dependencyDetails}
       <p><a class="jira-link" href="${issueUrl}" target="_blank" rel="noopener noreferrer">Open in Jira</a></p>`;
   });
 }
@@ -898,6 +1102,21 @@ function bindTabNavigation() {
   }
 }
 
+function bindFilterDisclosure() {
+  if (!el.toggleAdvancedFiltersBtn || !el.advancedFilters) {
+    return;
+  }
+
+  if (isNarrowViewport()) {
+    state.ui.advancedFiltersOpen = false;
+  }
+  syncAdvancedFiltersDisclosure();
+
+  el.toggleAdvancedFiltersBtn.addEventListener("click", () => {
+    setAdvancedFiltersOpen(!state.ui.advancedFiltersOpen);
+  });
+}
+
 function bindActions() {
   enableToggleMultiSelect(el.statusSelect, "statuses", "excludedStatuses");
   enableToggleMultiSelect(el.assigneeSelect, "assignees", "excludedAssignees");
@@ -917,7 +1136,6 @@ function bindActions() {
       excludedStatuses: [],
       excludedAssignees: [],
       boardId: "",
-      limit: 200,
       offset: 0,
     };
     applyStateToQuery();
@@ -942,6 +1160,7 @@ function bindActions() {
 async function bootstrap() {
   readStateFromQuery();
   bindTabNavigation();
+  bindFilterDisclosure();
   bindActions();
   await loadSyncStatus();
   await loadDashboardData();

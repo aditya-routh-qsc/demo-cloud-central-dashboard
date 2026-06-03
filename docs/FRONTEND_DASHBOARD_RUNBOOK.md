@@ -45,8 +45,10 @@ Manual checks:
 
 1. Global filter persistence
 - Apply filters in Overview.
-- Switch to Network, Metrics, and Tickets.
+- Switch between views using the left-side navigation.
 - Confirm same filter state remains in controls and API-driven values.
+- Collapse and reopen advanced filters.
+- Confirm the applied filter values remain active while the advanced section is hidden.
 
 2. Multi-select status and assignee filters
 - Select multiple statuses, including `Done` when present.
@@ -66,6 +68,11 @@ Manual checks:
 - Confirm Overview and Network remain accessible.
 - Confirm Network shows summary cards and explicit mobile-mode messaging instead of the interactive graph.
 - Confirm dense Metrics/Tickets interactive desktop views remain hidden.
+
+6. Compact shell navigation
+- Confirm the main view switcher appears as a left-side navigation rail on desktop.
+- Confirm the shell reflows to a compact stacked layout below 900px width.
+- Confirm the advanced filter region can be collapsed without clearing selected values.
 
 ## Known Limits
 

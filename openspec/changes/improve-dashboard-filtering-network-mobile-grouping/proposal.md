@@ -9,6 +9,7 @@ The current dashboard behavior makes key operational workflows difficult: users 
 - Provide mobile-optimized dependency insight through a simplified summary experience instead of the full interactive graph canvas.
 - Add explicit network empty-state messaging for no-data, hidden-mobile, and load-failure cases.
 - Group tickets by assignee in the Tickets view, including an explicit Unassigned group, sorted by workload count.
+- Remove the user-facing Rows filter control and always request the maximum supported ticket row count for filtered views.
 
 ## Capabilities
 

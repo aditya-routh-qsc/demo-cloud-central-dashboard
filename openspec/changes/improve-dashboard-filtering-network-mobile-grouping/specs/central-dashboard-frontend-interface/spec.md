@@ -44,3 +44,42 @@ The frontend SHALL consume existing backend APIs without requiring endpoint sche
 #### Scenario: Filter and grouping surfaces follow documented contract
 - **WHEN** the dashboard initializes filter options and grouped ticket explorer sections
 - **THEN** the frontend behavior maps to documented API fields and does not infer required values from paginated view slices alone
+
+### Requirement: Dependency Graph Legend and Semantic Styling
+The desktop dependency graph SHALL provide an always-visible legend that explains node and edge encodings, and SHALL use distinct visual encodings for ticket and dependency semantics.
+
+#### Scenario: Node legend clarifies ticket type encoding
+- **WHEN** a user opens the network tab on desktop
+- **THEN** the graph panel displays a node legend that maps node colors to ticket issue types and includes an explicit unknown/fallback category
+
+#### Scenario: Edge legend clarifies dependency encoding
+- **WHEN** a user opens the network tab on desktop
+- **THEN** the graph panel displays an edge legend that maps edge colors to dependency types and includes an explicit unknown/fallback category
+
+#### Scenario: Classification legend clarifies line style meaning
+- **WHEN** inter-team and intra-team classifications are present in graph data
+- **THEN** the graph panel legend distinguishes line style semantics for classification so users can identify ownership boundaries
+
+#### Scenario: Multiple dependency types between same tickets remain distinct
+- **WHEN** more than one dependency record exists between the same source and target ticket pair with different dependency types
+- **THEN** the graph renders separate edges for each dependency type rather than collapsing them into one visual edge
+
+#### Scenario: Semantic mappings use existing network payload fields
+- **WHEN** the frontend prepares graph elements and styles
+- **THEN** node ticket type and edge dependency metadata are derived from existing network response fields without requiring new backend endpoints
+
+#### Scenario: Node color mapping is deterministic by normalized issue type
+- **WHEN** node issue type values are rendered in the desktop dependency graph
+- **THEN** issue type values are normalized (trimmed and case-insensitive) and mapped to a deterministic color palette for `bug`, `story`, `task`, `epic`, and `sub-task`
+
+#### Scenario: Edge color mapping is deterministic by normalized dependency type
+- **WHEN** edge dependency type values are rendered in the desktop dependency graph
+- **THEN** dependency type values are normalized (trimmed and case-insensitive) and mapped to a deterministic color palette for `blockers`, `blocks`, `depends_on`, `relates_to`, and `duplicates`
+
+#### Scenario: Classification line style mapping is explicit
+- **WHEN** edge classification values are rendered
+- **THEN** `inter_team` edges use dashed line styling and `intra_team` edges use solid line styling
+
+#### Scenario: Unknown semantic values use explicit fallback styles
+- **WHEN** node issue type or edge dependency/classification values are missing or unrecognized
+- **THEN** the graph applies explicit unknown fallback styles and the legend includes those fallback categories

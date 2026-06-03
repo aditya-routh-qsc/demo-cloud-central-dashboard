@@ -430,11 +430,12 @@ def _build_network_graph(
 
         edge_where_clause = (
             "WHERE source_ticket_key IN (SELECT ticket_key FROM tickets_current "
+            f"{where_clause}) OR target_ticket_key IN (SELECT ticket_key FROM tickets_current "
             f"{where_clause})"
             if where_clause
             else ""
         )
-        edge_params = [*params] if where_clause else []
+        edge_params = [*params, *params] if where_clause else []
 
         dep_rows = conn.execute(
             f"""
@@ -511,19 +512,30 @@ def _build_network_graph(
                 "story_points": None,
             }
 
-    nodes = sorted(node_map.values(), key=lambda node: str(node.get("ticket_key") or ""))
+    connected_keys: set[str] = set()
+    edges: list[dict[str, Any]] = []
+    for row in dep_rows:
+        source_key = str(row["source_ticket_key"] or "").strip()
+        target_key = str(row["target_ticket_key"] or "").strip()
+        if not source_key or not target_key:
+            continue
+        connected_keys.add(source_key)
+        connected_keys.add(target_key)
+        edges.append(
+            {
+                "source_ticket": source_key,
+                "target_ticket": target_key,
+                "relation_name": row["relation_name"],
+                "relation_description": row["relation_description"],
+                "dependency_type": row["dependency_type"],
+                "classification": row["classification"],
+            }
+        )
 
-    edges = [
-        {
-            "source_ticket": row["source_ticket_key"],
-            "target_ticket": row["target_ticket_key"],
-            "relation_name": row["relation_name"],
-            "relation_description": row["relation_description"],
-            "dependency_type": row["dependency_type"],
-            "classification": row["classification"],
-        }
-        for row in dep_rows
-    ]
+    nodes = sorted(
+        [node for key, node in node_map.items() if key in connected_keys],
+        key=lambda node: str(node.get("ticket_key") or ""),
+    )
 
     return {
         "nodes": nodes,
@@ -673,7 +685,7 @@ def get_tickets(
     assignee_exclude: list[str] | None = Query(default=None),
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=1000, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     # Keep CSV fallback for status for URL backward-compat; assignee names may contain commas.

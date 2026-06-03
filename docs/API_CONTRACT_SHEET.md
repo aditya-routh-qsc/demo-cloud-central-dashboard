@@ -99,8 +99,13 @@ Fetch cached tickets with optional filters, stable filter metadata, assignee-gro
 | `assignee` | string[] | No | - | Repeatable or comma-separated exact assignee filters |
 | `search` | string | No | - | `LIKE` search on ticket key and summary |
 | `board_id` | string | No | - | Filters against `source_links_json` |
-| `limit` | int | No | `200` | Min `1`, max `1000` |
+| `limit` | int | No | `1000` | Min `1`, max `1000` |
 | `offset` | int | No | `0` | Min `0` |
+
+### Frontend Usage Note
+
+- The dashboard UI does not expose a user-editable Rows/page-size control.
+- Frontend requests use the maximum supported ticket limit for filtered retrieval.
 
 ### Response (200)
 
