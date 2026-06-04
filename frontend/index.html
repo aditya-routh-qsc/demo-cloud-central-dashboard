@@ -7,10 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/app/style.css" />
+  <link rel="stylesheet" href="/app/style.css?v=20260604-1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.0/dist/cytoscape.min.js" defer></script>
-  <script src="/app/app.js" defer></script>
+  <script src="/app/app.js?v=20260604-1" defer></script>
 </head>
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
@@ -43,6 +43,14 @@
 
       <div id="advancedFilters" class="filters-advanced" data-collapsible-panel>
         <div class="field">
+          <label for="teamSelect">Team</label>
+          <select id="teamSelect" multiple size="5" aria-label="Team filter">
+            <option value="">All</option>
+          </select>
+          <p id="teamSummary" class="field-summary">All teams</p>
+        </div>
+
+        <div class="field">
           <label for="statusSelect">Status</label>
           <select id="statusSelect" multiple size="5" aria-label="Status filter">
             <option value="">All</option>
@@ -55,6 +63,10 @@
           <select id="assigneeSelect" multiple size="5" aria-label="Assignee filter">
             <option value="">All</option>
           </select>
+          <div class="assignee-roster-actions">
+            <button id="assigneeSelectAllBtn" class="ghost-btn" type="button">Select Team Roster</button>
+            <button id="assigneeClearAllBtn" class="ghost-btn" type="button">Clear Team Roster</button>
+          </div>
           <p id="assigneeSummary" class="field-summary">All assignees</p>
         </div>
 
@@ -72,11 +84,37 @@
 
     <div class="shell-layout">
       <aside class="sidebar panel" aria-label="Dashboard views">
-        <nav class="tabs" aria-label="Dashboard views">
-          <button class="tab is-active" data-tab="overview" type="button">Overview</button>
-          <button class="tab" data-tab="network" type="button">Network</button>
-          <button class="tab" data-tab="metrics" type="button">Metrics</button>
-          <button class="tab" data-tab="tickets" type="button">Tickets</button>
+        <button
+          id="toggleSidebarBtn"
+          class="ghost-btn sidebar-toggle"
+          type="button"
+          aria-expanded="true"
+          aria-controls="dashboardTabs"
+        >
+          <span class="sidebar-toggle-icon" aria-hidden="true">&#9776;</span>
+          <span class="sidebar-toggle-label">Collapse sidebar</span>
+        </button>
+        <nav id="dashboardTabs" class="tabs" aria-label="Dashboard views">
+          <button class="tab is-active" data-tab="overview" type="button" title="Overview" aria-label="Overview">
+            <span class="tab-icon" aria-hidden="true">&#9679;</span>
+            <span class="tab-label">Overview</span>
+          </button>
+          <button class="tab" data-tab="network" type="button" title="Network" aria-label="Network">
+            <span class="tab-icon" aria-hidden="true">&#9638;</span>
+            <span class="tab-label">Network</span>
+          </button>
+          <button class="tab" data-tab="metrics" type="button" title="Metrics" aria-label="Metrics">
+            <span class="tab-icon" aria-hidden="true">&#9650;</span>
+            <span class="tab-label">Metrics</span>
+          </button>
+          <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
+            <span class="tab-icon" aria-hidden="true">&#9635;</span>
+            <span class="tab-label">Tickets</span>
+          </button>
+          <button class="tab" data-tab="teams" type="button" title="Teams" aria-label="Teams">
+            <span class="tab-icon" aria-hidden="true">&#9783;</span>
+            <span class="tab-label">Teams</span>
+          </button>
         </nav>
       </aside>
 
@@ -122,6 +160,7 @@
           <div class="split-grid">
             <article class="panel graph-panel">
               <h3>Dependency graph</h3>
+              <div id="networkSkeleton" class="panel-skeleton"></div>
               <div id="networkEmptyState" class="network-empty muted"></div>
               <div id="networkGraph"></div>
               <div id="networkMobileSummary" class="network-mobile-summary"></div>
@@ -152,6 +191,29 @@
             <h3>Ticket explorer</h3>
             <div id="ticketsGroups" class="ticket-groups"></div>
           </article>
+        </section>
+
+        <section id="teams" class="view">
+          <div class="split-grid">
+            <article class="panel">
+              <h3>Teams Workspace</h3>
+              <div id="teamsGrid" class="teams-grid"></div>
+            </article>
+            <article class="panel">
+              <h3 id="teamDetailTitle">Team Details</h3>
+              <div id="teamDetailTabs" class="team-detail-tabs">
+                <button class="team-tab is-active" data-team-tab="assigned" type="button">Tickets Assigned</button>
+                <button class="team-tab" data-team-tab="work_done" type="button">Work Done</button>
+                <button class="team-tab" data-team-tab="reported" type="button">Tickets Reported</button>
+                <button class="team-tab" data-team-tab="timeline" type="button">Timeline</button>
+              </div>
+              <div id="teamDetailSkeleton" class="team-detail-skeleton"></div>
+              <div id="teamAssignedPanel" class="team-panel is-active"></div>
+              <div id="teamWorkDonePanel" class="team-panel"></div>
+              <div id="teamReportedPanel" class="team-panel"></div>
+              <div id="teamTimelinePanel" class="team-panel"></div>
+            </article>
+          </div>
         </section>
       </main>
     </div>

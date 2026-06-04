@@ -90,11 +90,13 @@ main {
 }
 
 .brand-dot {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: conic-gradient(from 140deg, var(--accent), var(--accent-2), var(--accent));
-  box-shadow: 0 0 24px rgba(29, 211, 255, 0.45);
+    width: 34px;
+    height: 34px;
+    
+    background: url('/assets/images/qsys-logo.png') no-repeat center;
+    background-size: contain;
+    
+    box-shadow: 0 0 24px rgba(29, 211, 255, 0.45);
 }
 
 .brand-wrap h1 {
@@ -122,6 +124,11 @@ main {
   padding: 6px 12px;
   font-size: 0.84rem;
   background: rgba(14, 37, 61, 0.82);
+}
+
+.sync-last-updated {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .sync-chip.running {
@@ -185,7 +192,7 @@ main {
 
 .filters-advanced {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
   padding-top: 12px;
@@ -239,6 +246,17 @@ main {
   background: rgba(255, 107, 107, 0.18);
 }
 
+.assignee-roster-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.assignee-roster-actions .ghost-btn {
+  padding: 5px 8px;
+  font-size: 0.75rem;
+}
+
 .field select[multiple]:focus,
 .field input:focus,
 .tab:focus-visible,
@@ -269,6 +287,20 @@ main {
   padding: 12px;
 }
 
+.sidebar-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sidebar-toggle-icon {
+  width: 18px;
+  text-align: center;
+}
+
 .tabs {
   display: flex;
   flex-direction: column;
@@ -279,11 +311,41 @@ main {
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 10px;
   background: rgba(8, 18, 30, 0.6);
   padding: 12px 14px;
   text-align: left;
   min-height: 48px;
   width: 100%;
+}
+
+.tab-icon {
+  width: 18px;
+  text-align: center;
+  flex: 0 0 18px;
+}
+
+.tab-label {
+  white-space: nowrap;
+}
+
+.dashboard-shell.sidebar-collapsed .shell-layout {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
+.dashboard-shell.sidebar-collapsed .sidebar {
+  padding: 10px;
+}
+
+.dashboard-shell.sidebar-collapsed .tab {
+  justify-content: center;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.dashboard-shell.sidebar-collapsed .tab-label,
+.dashboard-shell.sidebar-collapsed .sidebar-toggle-label {
+  display: none;
 }
 
 .tab.is-active {
@@ -358,6 +420,21 @@ main {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(8, 18, 30, 0.78);
+}
+
+.panel-skeleton {
+  display: none;
+  height: 80px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(30, 50, 74, 0.65), rgba(86, 127, 170, 0.28), rgba(30, 50, 74, 0.65));
+  background-size: 220% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+
+.panel-skeleton.is-visible {
+  display: block;
 }
 
 #networkLegend.is-visible,
@@ -464,10 +541,17 @@ main {
   background: rgba(8, 18, 30, 0.52);
 }
 
-.ticket-group h4 {
+.ticket-group summary {
+  list-style: none;
+  cursor: pointer;
   margin: 0;
   padding: 12px 14px;
   border-bottom: 1px solid rgba(159, 192, 222, 0.16);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .ticket-group-count {
@@ -475,8 +559,164 @@ main {
   font-weight: 500;
 }
 
+.ticket-group-badge {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.ticket-member-list {
+  padding: 8px 10px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.ticket-member-group {
+  border: 1px solid rgba(159, 192, 222, 0.18);
+  border-radius: 10px;
+  background: rgba(4, 12, 22, 0.5);
+}
+
+.ticket-member-group h5 {
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(159, 192, 222, 0.14);
+}
+
 .ticket-group .table-wrap {
   padding: 0 12px 12px;
+}
+
+.teams-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.team-card {
+  border: 1px solid rgba(159, 192, 222, 0.22);
+  border-radius: 12px;
+  background: rgba(8, 18, 30, 0.52);
+  padding: 10px;
+  cursor: pointer;
+}
+
+.team-card.is-selected {
+  border-color: rgba(29, 211, 255, 0.58);
+  box-shadow: 0 0 0 1px rgba(29, 211, 255, 0.28) inset;
+}
+
+.team-card header h4 {
+  margin: 0 0 4px;
+}
+
+.team-card ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.external-icon {
+  font-size: 0.8rem;
+  color: var(--accent-2);
+}
+
+.team-detail-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.team-tab {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: rgba(8, 18, 30, 0.62);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.team-tab.is-active {
+  border-color: rgba(29, 211, 255, 0.55);
+  background: rgba(29, 211, 255, 0.18);
+}
+
+.team-panel {
+  display: none;
+}
+
+.team-panel.is-active {
+  display: block;
+}
+
+.team-metrics-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.metric-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+}
+
+.reported-list .reported-pill {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 159, 67, 0.2);
+  color: #ffd3a8;
+  border: 1px solid rgba(255, 159, 67, 0.4);
+  font-size: 0.72rem;
+}
+
+.timeline-lane {
+  margin: 10px 0;
+}
+
+.timeline-lane span {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.timeline-bar {
+  height: 12px;
+  border-radius: 999px;
+  min-width: 6px;
+}
+
+.timeline-bar.todo {
+  background: #7b8ca6;
+}
+
+.timeline-bar.in-progress {
+  background: #ff9f43;
+}
+
+.timeline-bar.done {
+  background: #3ad29f;
+}
+
+.team-detail-skeleton {
+  display: none;
+  height: 54px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(30, 50, 74, 0.65), rgba(86, 127, 170, 0.28), rgba(30, 50, 74, 0.65));
+  background-size: 220% 100%;
+  animation: shimmer 1.2s linear infinite;
+  margin-bottom: 10px;
+}
+
+.team-detail-skeleton.is-visible {
+  display: block;
+}
+
+@keyframes shimmer {
+  0% { background-position: 0 0; }
+  100% { background-position: 220% 0; }
 }
 
 table {
@@ -543,6 +783,14 @@ a.jira-link {
   .tabs {
     flex-direction: row;
     flex-wrap: wrap;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .dashboard-shell.sidebar-collapsed .shell-layout {
+    grid-template-columns: 1fr;
   }
 
   .tab {

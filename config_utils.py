@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import configparser
+import logging
 import os
 from functools import lru_cache
 
+from dotenv import load_dotenv
+
 DEFAULT_CONFIG_PATH = ".config"
 DEFAULT_SYNC_INTERVAL_MINUTES = 60
+MIN_SYNC_INTERVAL_MINUTES = 1
+MAX_SYNC_INTERVAL_MINUTES = 1440
+
+load_dotenv(override=True)
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -20,15 +28,52 @@ def load_config(config_path: str | None = None) -> configparser.ConfigParser:
 
 
 def get_sync_interval_minutes() -> int:
-    """Return scheduler interval in minutes from .config with default fallback."""
+    """Return scheduler interval in minutes from .env with safe fallback."""
+    env_value = os.getenv("SCHEDULED_SYNC_INTERVAL_MINUTES", "").strip()
+    if env_value:
+        try:
+            parsed = int(env_value)
+        except ValueError:
+            logger.warning(
+                "Invalid SCHEDULED_SYNC_INTERVAL_MINUTES='%s'. Using default %s.",
+                env_value,
+                DEFAULT_SYNC_INTERVAL_MINUTES,
+            )
+            return DEFAULT_SYNC_INTERVAL_MINUTES
+
+        if parsed < MIN_SYNC_INTERVAL_MINUTES or parsed > MAX_SYNC_INTERVAL_MINUTES:
+            logger.warning(
+                "Out-of-range SCHEDULED_SYNC_INTERVAL_MINUTES='%s'. Allowed range is %s-%s. Using default %s.",
+                env_value,
+                MIN_SYNC_INTERVAL_MINUTES,
+                MAX_SYNC_INTERVAL_MINUTES,
+                DEFAULT_SYNC_INTERVAL_MINUTES,
+            )
+            return DEFAULT_SYNC_INTERVAL_MINUTES
+        return parsed
+
     parser = load_config()
     raw_value = parser.get("sync", "interval_minutes", fallback=str(DEFAULT_SYNC_INTERVAL_MINUTES)).strip()
     try:
         parsed = int(raw_value)
     except ValueError:
+        logger.warning(
+            "Invalid legacy .config sync.interval_minutes='%s'. Using default %s.",
+            raw_value,
+            DEFAULT_SYNC_INTERVAL_MINUTES,
+        )
         return DEFAULT_SYNC_INTERVAL_MINUTES
-    if parsed <= 0:
+
+    if parsed < MIN_SYNC_INTERVAL_MINUTES or parsed > MAX_SYNC_INTERVAL_MINUTES:
+        logger.warning(
+            "Legacy .config sync.interval_minutes='%s' is out of range %s-%s. Using default %s.",
+            raw_value,
+            MIN_SYNC_INTERVAL_MINUTES,
+            MAX_SYNC_INTERVAL_MINUTES,
+            DEFAULT_SYNC_INTERVAL_MINUTES,
+        )
         return DEFAULT_SYNC_INTERVAL_MINUTES
+
     return parsed
 
 

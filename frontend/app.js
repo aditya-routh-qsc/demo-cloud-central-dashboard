@@ -1,6 +1,7 @@
 const state = {
   filters: {
     search: "",
+    teams: [],
     statuses: [],
     assignees: [],
     excludedStatuses: [],
@@ -9,6 +10,7 @@ const state = {
     offset: 0,
   },
   filterOptions: {
+    teams: [],
     statuses: [],
     assignees: [],
   },
@@ -19,11 +21,17 @@ const state = {
   ticketTotal: 0,
   network: null,
   networkLoadError: "",
+  teamsWorkspace: null,
+  selectedTeamId: "",
+  selectedTeamTab: "assigned",
+  teamDetail: null,
+  teamDetailLoading: false,
   jiraDomain: "qsc.atlassian.net",
   charts: {},
   cy: null,
   ui: {
     advancedFiltersOpen: true,
+    sidebarCollapsed: false,
   },
 };
 
@@ -80,21 +88,29 @@ const DEPENDENCY_TYPE_ALIASES = new Map([
 ]);
 
 const el = {
+  dashboardShell: document.querySelector(".dashboard-shell"),
   syncChip: document.getElementById("syncChip"),
+  lastUpdatedText: document.getElementById("lastUpdatedText"),
   manualSyncBtn: document.getElementById("manualSyncBtn"),
+  toggleSidebarBtn: document.getElementById("toggleSidebarBtn"),
   toggleAdvancedFiltersBtn: document.getElementById("toggleAdvancedFiltersBtn"),
   advancedFilters: document.getElementById("advancedFilters"),
   searchInput: document.getElementById("searchInput"),
+  teamSelect: document.getElementById("teamSelect"),
   statusSelect: document.getElementById("statusSelect"),
   assigneeSelect: document.getElementById("assigneeSelect"),
+  teamSummary: document.getElementById("teamSummary"),
   statusSummary: document.getElementById("statusSummary"),
   assigneeSummary: document.getElementById("assigneeSummary"),
+  assigneeSelectAllBtn: document.getElementById("assigneeSelectAllBtn"),
+  assigneeClearAllBtn: document.getElementById("assigneeClearAllBtn"),
   boardInput: document.getElementById("boardInput"),
   applyFiltersBtn: document.getElementById("applyFiltersBtn"),
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
   ticketsGroups: document.getElementById("ticketsGroups"),
   nodeDetails: document.getElementById("nodeDetails"),
   networkLegend: document.getElementById("networkLegend"),
+  networkSkeleton: document.getElementById("networkSkeleton"),
   networkEmptyState: document.getElementById("networkEmptyState"),
   networkMobileSummary: document.getElementById("networkMobileSummary"),
   networkGraph: document.getElementById("networkGraph"),
@@ -102,7 +118,61 @@ const el = {
   kpiOpenBugs: document.getElementById("kpiOpenBugs"),
   kpiStale: document.getElementById("kpiStale"),
   kpiFilteredTotal: document.getElementById("kpiFilteredTotal"),
+  teamsGrid: document.getElementById("teamsGrid"),
+  teamDetailTitle: document.getElementById("teamDetailTitle"),
+  teamDetailTabs: document.getElementById("teamDetailTabs"),
+  teamDetailSkeleton: document.getElementById("teamDetailSkeleton"),
+  teamAssignedPanel: document.getElementById("teamAssignedPanel"),
+  teamWorkDonePanel: document.getElementById("teamWorkDonePanel"),
+  teamReportedPanel: document.getElementById("teamReportedPanel"),
+  teamTimelinePanel: document.getElementById("teamTimelinePanel"),
 };
+
+function syncSidebarDisclosure() {
+  if (!el.dashboardShell || !el.toggleSidebarBtn) {
+    return;
+  }
+
+  const isCollapsed = Boolean(state.ui.sidebarCollapsed);
+  el.dashboardShell.classList.toggle("sidebar-collapsed", isCollapsed);
+  el.toggleSidebarBtn.setAttribute("aria-expanded", String(!isCollapsed));
+  el.toggleSidebarBtn.setAttribute("aria-label", isCollapsed ? "Expand sidebar" : "Collapse sidebar");
+
+  const label = el.toggleSidebarBtn.querySelector(".sidebar-toggle-label");
+  if (label) {
+    label.textContent = isCollapsed ? "Expand sidebar" : "Collapse sidebar";
+  }
+}
+
+function formatSyncTimestamp(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) {
+    return "--";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function updateLastUpdatedText(rawValue) {
+  if (!el.lastUpdatedText) {
+    return;
+  }
+  el.lastUpdatedText.textContent = `Last update: ${formatSyncTimestamp(rawValue)}`;
+}
 
 function isNarrowViewport() {
   return window.innerWidth <= mobileBreakpoint;
@@ -338,6 +408,10 @@ function parseAssigneeQuery(params) {
   return uniqueValues(params.getAll("assignee"));
 }
 
+function parseTeamQuery(params) {
+  return uniqueValues(params.getAll("team"));
+}
+
 function parseStatusExcludeQuery(params) {
   const rawValues = params.getAll("status_exclude");
   if (rawValues.length === 1 && rawValues[0].includes(",")) {
@@ -456,10 +530,17 @@ function bindExcludeOnDoubleClick(selectEl, includeKey, excludeKey) {
 }
 
 function updateFilterSummaries() {
+  const teams = state.filters.teams;
   const statuses = state.filters.statuses;
   const assignees = state.filters.assignees;
   const excludedStatuses = state.filters.excludedStatuses;
   const excludedAssignees = state.filters.excludedAssignees;
+
+  const teamParts = [];
+  if (teams.length) {
+    teamParts.push(`${teams.length} selected: ${teams.slice(0, 2).join(", ")}${teams.length > 2 ? "..." : ""}`);
+  }
+  el.teamSummary.textContent = teamParts.length ? teamParts.join(" | ") : "All teams";
 
   const statusParts = [];
   if (statuses.length) {
@@ -527,6 +608,9 @@ async function apiPost(path) {
 function applyStateToQuery() {
   const params = new URLSearchParams();
   if (state.filters.search) params.set("search", state.filters.search);
+  for (const team of state.filters.teams) {
+    params.append("team", team);
+  }
   for (const status of state.filters.statuses) {
     params.append("status", status);
   }
@@ -548,6 +632,7 @@ function applyStateToQuery() {
 function readStateFromQuery() {
   const params = new URLSearchParams(location.search);
   state.filters.search = params.get("search") || "";
+  state.filters.teams = parseTeamQuery(params);
   state.filters.statuses = parseStatusQuery(params);
   state.filters.assignees = parseAssigneeQuery(params);
   state.filters.excludedStatuses = parseStatusExcludeQuery(params);
@@ -562,6 +647,7 @@ function readStateFromQuery() {
 function syncInputsFromState() {
   el.searchInput.value = state.filters.search;
   el.boardInput.value = state.filters.boardId;
+  setSelectedValues(el.teamSelect, state.filters.teams);
   setSelectedValues(el.statusSelect, state.filters.statuses);
   setSelectedValues(el.assigneeSelect, state.filters.assignees);
   updateFilterSummaries();
@@ -570,6 +656,9 @@ function syncInputsFromState() {
 function buildTicketsQuery() {
   const params = new URLSearchParams();
   if (state.filters.search) params.set("search", state.filters.search);
+  for (const team of state.filters.teams) {
+    params.append("team", team);
+  }
   for (const status of state.filters.statuses) {
     params.append("status", status);
   }
@@ -591,6 +680,9 @@ function buildTicketsQuery() {
 function buildSharedFilterQuery(basePath) {
   const params = new URLSearchParams();
   if (state.filters.search) params.set("search", state.filters.search);
+  for (const team of state.filters.teams) {
+    params.append("team", team);
+  }
   for (const status of state.filters.statuses) {
     params.append("status", status);
   }
@@ -610,6 +702,7 @@ function buildSharedFilterQuery(basePath) {
 
 function updateFilterStateFromInputs() {
   state.filters.search = el.searchInput.value.trim();
+  state.filters.teams = uniqueValues(getSelectedValues(el.teamSelect));
   const selectedStatuses = uniqueValues(getSelectedValues(el.statusSelect));
   const selectedAssignees = uniqueValues(getSelectedValues(el.assigneeSelect));
 
@@ -657,6 +750,7 @@ function renderSyncChip() {
   if (!state.sync) {
     el.syncChip.textContent = "Sync status: unavailable";
     el.syncChip.className = "sync-chip error";
+    updateLastUpdatedText(null);
     return;
   }
 
@@ -669,6 +763,7 @@ function renderSyncChip() {
   if (runtime.last_error) {
     el.syncChip.textContent = `Sync status: error (${runtime.last_error})`;
     el.syncChip.classList.add("error");
+    updateLastUpdatedText(runtime.started_at || run?.completed_at || run?.started_at || null);
     return;
   }
 
@@ -676,15 +771,19 @@ function renderSyncChip() {
     const trigger = runtime.trigger || "unknown";
     el.syncChip.textContent = `Sync status: running (${trigger})`;
     el.syncChip.classList.add("running");
+    updateLastUpdatedText(runtime.started_at || run?.completed_at || run?.started_at || null);
     return;
   }
 
   if (run && run.started_at) {
-    el.syncChip.textContent = `Sync status: last ${run.status || "unknown"} (${run.started_at})`;
+    const completedAt = run.completed_at || run.started_at;
+    el.syncChip.textContent = `Sync status: last ${run.status || "unknown"} (${formatSyncTimestamp(completedAt)})`;
+    updateLastUpdatedText(completedAt);
     return;
   }
 
   el.syncChip.textContent = "Sync status: idle";
+  updateLastUpdatedText(null);
 }
 
 function renderKpis() {
@@ -796,37 +895,175 @@ function renderTickets() {
   }
 
   const sections = state.ticketGroups.map((group) => {
-    const rows = (group.items || []).map((ticket) => {
-      const issueUrl = jiraIssueUrl(ticket.ticket_key || "");
-      return `<tr>
-        <td>${escapeHtml(ticket.ticket_key)}</td>
-        <td>${escapeHtml(ticket.summary)}</td>
-        <td>${escapeHtml(ticket.status)}</td>
-        <td>${escapeHtml(ticket.priority)}</td>
-        <td><a class="jira-link" href="${issueUrl}" target="_blank" rel="noopener noreferrer">Open</a></td>
-      </tr>`;
+    const memberSections = (group.members || []).map((memberGroup) => {
+      const rows = (memberGroup.items || []).map((ticket) => {
+        const issueUrl = jiraIssueUrl(ticket.ticket_key || "");
+        return `<tr>
+          <td>${escapeHtml(ticket.ticket_key)}</td>
+          <td>${escapeHtml(ticket.summary)}</td>
+          <td>${escapeHtml(ticket.status)}</td>
+          <td>${escapeHtml(ticket.priority)}</td>
+          <td><a class="jira-link" href="${issueUrl}" target="_blank" rel="noopener noreferrer">Open</a></td>
+        </tr>`;
+      });
+
+      return `<section class="ticket-member-group">
+        <h5>${escapeHtml(memberGroup.member_name || memberGroup.assignee || "Unassigned")} <span class="ticket-group-count">(${memberGroup.count || 0})</span></h5>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Key</th>
+                <th>Summary</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Jira</th>
+              </tr>
+            </thead>
+            <tbody>${rows.join("")}</tbody>
+          </table>
+        </div>
+      </section>`;
     });
 
-    return `<section class="ticket-group">
-      <h4>${escapeHtml(group.assignee)} <span class="ticket-group-count">(${group.count})</span></h4>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Key</th>
-              <th>Summary</th>
-              <th>Status</th>
-              <th>Priority</th>
-              <th>Jira</th>
-            </tr>
-          </thead>
-          <tbody>${rows.join("")}</tbody>
-        </table>
-      </div>
-    </section>`;
+    const metrics = group.metrics || {
+      total: group.total_tickets || 0,
+      in_progress: group.in_progress_tickets || 0,
+      blocked: group.blocked_tickets || 0,
+    };
+
+    return `<details class="ticket-group" open>
+      <summary>
+        <strong>${escapeHtml(group.team_name || "Unmapped Team")}</strong>
+        <span class="ticket-group-badge">Total: ${metrics.total || 0} Tickets | ${metrics.in_progress || 0} In Progress | ${metrics.blocked || 0} Blocked</span>
+      </summary>
+      <div class="ticket-member-list">${memberSections.join("")}</div>
+    </details>`;
   });
 
   el.ticketsGroups.innerHTML = sections.join("");
+}
+
+function renderTeamsWorkspace() {
+  const payload = state.teamsWorkspace || { teams: [] };
+  const teams = Array.isArray(payload.teams) ? payload.teams : [];
+  if (!teams.length) {
+    el.teamsGrid.innerHTML = "<p class='muted'>No team data available in cache.</p>";
+    return;
+  }
+
+  const cards = teams.map((team) => {
+    const members = Array.isArray(team.members) ? team.members : [];
+    const memberLinks = members.map((member) => {
+      const profileUrl = String(member.profile_url || "").trim();
+      const label = escapeHtml(member.display_name || "Unknown Member");
+      if (!profileUrl) {
+        return `<li>${label}</li>`;
+      }
+      return `<li><a class="jira-link" href="${profileUrl}" target="_blank" rel="noopener noreferrer">${label} <span class="external-icon" aria-hidden="true">&#8599;</span></a></li>`;
+    });
+
+    return `<article class="team-card ${state.selectedTeamId === team.team_id ? "is-selected" : ""}" data-team-id="${escapeHtml(team.team_id)}">
+      <header>
+        <h4>${escapeHtml(team.display_name || team.team_name || "Unnamed Team")}</h4>
+        <p class="muted">${escapeHtml(team.description || "")}</p>
+      </header>
+      <ul>${memberLinks.join("")}</ul>
+    </article>`;
+  });
+
+  el.teamsGrid.innerHTML = cards.join("");
+
+  const selectableCards = el.teamsGrid.querySelectorAll(".team-card");
+  for (const card of selectableCards) {
+    card.addEventListener("click", async () => {
+      state.selectedTeamId = String(card.getAttribute("data-team-id") || "").trim();
+      renderTeamsWorkspace();
+      await loadSelectedTeamDetail();
+    });
+  }
+}
+
+function setActiveTeamTab(tabKey) {
+  state.selectedTeamTab = tabKey;
+  const tabs = document.querySelectorAll(".team-tab");
+  for (const tab of tabs) {
+    tab.classList.toggle("is-active", tab.dataset.teamTab === tabKey);
+  }
+
+  const panelMap = {
+    assigned: el.teamAssignedPanel,
+    work_done: el.teamWorkDonePanel,
+    reported: el.teamReportedPanel,
+    timeline: el.teamTimelinePanel,
+  };
+  for (const [key, panel] of Object.entries(panelMap)) {
+    panel.classList.toggle("is-active", key === tabKey);
+  }
+}
+
+function renderTeamDetailPanels() {
+  const detail = state.teamDetail;
+  if (!detail) {
+    el.teamDetailTitle.textContent = "Team Details";
+    el.teamAssignedPanel.innerHTML = "<p class='muted'>Select a team to view assigned tickets.</p>";
+    el.teamWorkDonePanel.innerHTML = "<p class='muted'>Select a team to view completed work.</p>";
+    el.teamReportedPanel.innerHTML = "<p class='muted'>Select a team to view reported tickets.</p>";
+    el.teamTimelinePanel.innerHTML = "<p class='muted'>Select a team to view timeline.</p>";
+    return;
+  }
+
+  const team = detail.team || {};
+  el.teamDetailTitle.textContent = `${team.display_name || team.team_name || "Team"} Details`;
+
+  const assigned = detail.tickets_assigned || {};
+  const assignedItems = Array.isArray(assigned.items) ? assigned.items : [];
+  const assignedRows = assignedItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")} (${escapeHtml(item.status || "Unknown")})</li>`);
+  const assignedMetrics = assigned.metrics || {};
+  el.teamAssignedPanel.innerHTML = `
+    <div class="team-metrics-row">
+      <span class="metric-pill">Total: ${assignedMetrics.total || 0}</span>
+      <span class="metric-pill">In Progress: ${assignedMetrics.in_progress || 0}</span>
+      <span class="metric-pill">Blocked: ${assignedMetrics.blocked || 0}</span>
+    </div>
+    <ul>${assignedRows.join("") || "<li class='muted'>No assigned tickets.</li>"}</ul>
+  `;
+
+  const workDoneItems = Array.isArray(detail.work_done?.items) ? detail.work_done.items : [];
+  el.teamWorkDonePanel.innerHTML = `<ul>${workDoneItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")}</li>`).join("") || "<li class='muted'>No completed/resolved tickets.</li>"}</ul>`;
+
+  const reportedItems = Array.isArray(detail.tickets_reported?.items) ? detail.tickets_reported.items : [];
+  el.teamReportedPanel.innerHTML = `<ul class="reported-list">${reportedItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")} <span class="reported-pill">Reported By Team</span></li>`).join("") || "<li class='muted'>No reported tickets.</li>"}</ul>`;
+
+  const timeline = detail.timeline || { todo: 0, in_progress: 0, done: 0, total: 0 };
+  const total = Number(timeline.total || (timeline.todo || 0) + (timeline.in_progress || 0) + (timeline.done || 0));
+  const toPct = (value) => (total > 0 ? Math.round((Number(value || 0) / total) * 100) : 0);
+  el.teamTimelinePanel.innerHTML = `
+    <div class="timeline-lane"><span>To Do (${timeline.todo || 0})</span><div class="timeline-bar todo" style="width:${toPct(timeline.todo)}%"></div></div>
+    <div class="timeline-lane"><span>In Progress (${timeline.in_progress || 0})</span><div class="timeline-bar in-progress" style="width:${toPct(timeline.in_progress)}%"></div></div>
+    <div class="timeline-lane"><span>Done (${timeline.done || 0})</span><div class="timeline-bar done" style="width:${toPct(timeline.done)}%"></div></div>
+  `;
+}
+
+async function loadSelectedTeamDetail() {
+  if (!state.selectedTeamId) {
+    state.teamDetail = null;
+    renderTeamDetailPanels();
+    return;
+  }
+
+  state.teamDetailLoading = true;
+  el.teamDetailSkeleton.classList.add("is-visible");
+  try {
+    state.teamDetail = await apiGet(buildSharedFilterQuery(`/api/teams/${encodeURIComponent(state.selectedTeamId)}`));
+  } catch (_error) {
+    state.teamDetail = null;
+  } finally {
+    state.teamDetailLoading = false;
+    el.teamDetailSkeleton.classList.remove("is-visible");
+    renderTeamDetailPanels();
+    setActiveTeamTab(state.selectedTeamTab);
+  }
 }
 
 function renderNetworkEmptyState(message, isError = false) {
@@ -1012,15 +1249,19 @@ function setSelectOptions(selectEl, values) {
 }
 
 function refreshFilterOptions() {
+  const teamScrollTop = el.teamSelect.scrollTop;
   const statusScrollTop = el.statusSelect.scrollTop;
   const assigneeScrollTop = el.assigneeSelect.scrollTop;
+  const teams = Array.isArray(state.filterOptions.teams) ? state.filterOptions.teams : [];
   const statuses = Array.isArray(state.filterOptions.statuses) ? state.filterOptions.statuses : [];
   const assignees = Array.isArray(state.filterOptions.assignees) ? state.filterOptions.assignees : [];
 
+  setSelectOptions(el.teamSelect, teams);
   setSelectOptions(el.statusSelect, statuses);
   setSelectOptions(el.assigneeSelect, assignees);
   syncInputsFromState();
   refreshExcludeStyles();
+  restoreSelectScroll(el.teamSelect, teamScrollTop);
   restoreSelectScroll(el.statusSelect, statusScrollTop);
   restoreSelectScroll(el.assigneeSelect, assigneeScrollTop);
 }
@@ -1035,10 +1276,14 @@ async function loadSyncStatus() {
 }
 
 async function loadDashboardData() {
-  const [metricsResult, ticketsResult, networkResult] = await Promise.allSettled([
+  if (el.networkSkeleton) {
+    el.networkSkeleton.classList.add("is-visible");
+  }
+  const [metricsResult, ticketsResult, networkResult, teamsWorkspaceResult] = await Promise.allSettled([
     apiGet(buildSharedFilterQuery("/api/metrics")),
     apiGet(buildTicketsQuery()),
     apiGet(buildSharedFilterQuery("/api/network")),
+    apiGet("/api/teams"),
   ]);
 
   if (metricsResult.status !== "fulfilled") {
@@ -1053,6 +1298,7 @@ async function loadDashboardData() {
   state.tickets = Array.isArray(ticketsPayload.items) ? ticketsPayload.items : [];
   state.ticketTotal = Number(ticketsPayload.total || 0);
   state.filterOptions = {
+    teams: Array.isArray(ticketsPayload.filter_options?.teams) ? ticketsPayload.filter_options.teams : [],
     statuses: Array.isArray(ticketsPayload.filter_options?.statuses) ? ticketsPayload.filter_options.statuses : [],
     assignees: Array.isArray(ticketsPayload.filter_options?.assignees) ? ticketsPayload.filter_options.assignees : [],
   };
@@ -1068,6 +1314,16 @@ async function loadDashboardData() {
     state.networkLoadError = String(networkResult.reason || "network load failed");
   }
 
+  if (teamsWorkspaceResult.status === "fulfilled") {
+    state.teamsWorkspace = teamsWorkspaceResult.value;
+    if (!state.selectedTeamId) {
+      const teams = Array.isArray(state.teamsWorkspace?.teams) ? state.teamsWorkspace.teams : [];
+      state.selectedTeamId = String(teams[0]?.team_id || "").trim();
+    }
+  } else {
+    state.teamsWorkspace = { teams: [] };
+  }
+
   if (state.tickets.length) {
     inferJiraDomainFromTicket(state.tickets[0]);
   }
@@ -1080,6 +1336,11 @@ async function loadDashboardData() {
   refreshFilterOptions();
   renderTickets();
   renderNetwork();
+  renderTeamsWorkspace();
+  await loadSelectedTeamDetail();
+  if (el.networkSkeleton) {
+    el.networkSkeleton.classList.remove("is-visible");
+  }
 }
 
 function setActiveTab(tabName) {
@@ -1118,10 +1379,40 @@ function bindFilterDisclosure() {
 }
 
 function bindActions() {
+  enableToggleMultiSelect(el.teamSelect);
   enableToggleMultiSelect(el.statusSelect, "statuses", "excludedStatuses");
   enableToggleMultiSelect(el.assigneeSelect, "assignees", "excludedAssignees");
   bindExcludeOnDoubleClick(el.statusSelect, "statuses", "excludedStatuses");
   bindExcludeOnDoubleClick(el.assigneeSelect, "assignees", "excludedAssignees");
+
+  if (el.teamDetailTabs) {
+    const teamTabs = el.teamDetailTabs.querySelectorAll(".team-tab");
+    for (const tab of teamTabs) {
+      tab.addEventListener("click", () => {
+        setActiveTeamTab(String(tab.dataset.teamTab || "assigned"));
+      });
+    }
+  }
+
+  if (el.assigneeSelectAllBtn) {
+    el.assigneeSelectAllBtn.addEventListener("click", () => {
+      setSelectedValues(el.assigneeSelect, state.filterOptions.assignees || []);
+      state.filters.assignees = uniqueValues(state.filterOptions.assignees || []);
+      applyStateToQuery();
+      updateFilterSummaries();
+      refreshExcludeStyles();
+    });
+  }
+
+  if (el.assigneeClearAllBtn) {
+    el.assigneeClearAllBtn.addEventListener("click", () => {
+      setSelectedValues(el.assigneeSelect, []);
+      state.filters.assignees = [];
+      applyStateToQuery();
+      updateFilterSummaries();
+      refreshExcludeStyles();
+    });
+  }
 
   el.applyFiltersBtn.addEventListener("click", async () => {
     updateFilterStateFromInputs();
@@ -1131,6 +1422,7 @@ function bindActions() {
   el.resetFiltersBtn.addEventListener("click", async () => {
     state.filters = {
       search: "",
+      teams: [],
       statuses: [],
       assignees: [],
       excludedStatuses: [],
@@ -1153,13 +1445,30 @@ function bindActions() {
   });
 
   window.addEventListener("resize", () => {
+    if (window.innerWidth <= mobileBreakpoint && state.ui.sidebarCollapsed) {
+      state.ui.sidebarCollapsed = false;
+      syncSidebarDisclosure();
+    }
     renderNetwork();
+  });
+}
+
+function bindSidebarToggle() {
+  if (!el.toggleSidebarBtn) {
+    return;
+  }
+
+  syncSidebarDisclosure();
+  el.toggleSidebarBtn.addEventListener("click", () => {
+    state.ui.sidebarCollapsed = !state.ui.sidebarCollapsed;
+    syncSidebarDisclosure();
   });
 }
 
 async function bootstrap() {
   readStateFromQuery();
   bindTabNavigation();
+  bindSidebarToggle();
   bindFilterDisclosure();
   bindActions();
   await loadSyncStatus();

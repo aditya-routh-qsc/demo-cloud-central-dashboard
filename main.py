@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -15,7 +14,19 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from config_utils import get_sync_interval_minutes
-from database import get_connection, init_db, persist_extraction_result, read_sync_overview
+from database import (
+    build_network_graph,
+    calculate_metrics,
+    init_db,
+    load_filter_options,
+    load_grouped_tickets_by_team,
+    load_team_detail_panels,
+    load_team_filter_options,
+    load_teams_workspace_data,
+    load_ticket_rows,
+    persist_extraction_result,
+    read_sync_overview,
+)
 from services import _get_runtime_inputs, get_ticket_details_from_kanban_links
 
 try:
@@ -33,6 +44,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if BackgroundScheduler is not None:
         interval_minutes = get_sync_interval_minutes()
+        _log_sync(f"scheduler configured: interval_minutes={interval_minutes}")
         _scheduler = BackgroundScheduler(timezone="UTC")
         _scheduler.add_job(
             _scheduled_sync_job,
@@ -164,47 +176,15 @@ def _extend_where_clause(where_clause: str, extra_condition: str) -> str:
 
 
 def _load_filter_options(search: str | None, board_id: str | None) -> dict[str, list[str]]:
-    where_clause, params = _build_ticket_filter_clause(
-        statuses=[],
-        assignees=[],
-        excluded_statuses=[],
-        excluded_assignees=[],
-        search=search,
-        board_id=board_id,
-    )
+    return load_filter_options(search=search, board_id=board_id)
 
-    with get_connection() as conn:
-        status_rows = conn.execute(
-            f"""
-            SELECT DISTINCT status
-            FROM tickets_current
-            {where_clause}
-            ORDER BY status COLLATE NOCASE ASC
-            """,
-            params,
-        ).fetchall()
 
-        assignee_rows = conn.execute(
-            f"""
-            SELECT DISTINCT assignee
-            FROM tickets_current
-            {where_clause}
-            ORDER BY assignee COLLATE NOCASE ASC
-            """,
-            params,
-        ).fetchall()
-
-    statuses = [str(row["status"]).strip() for row in status_rows if str(row["status"] or "").strip()]
-    assignees = [
-        str(row["assignee"]).strip()
-        for row in assignee_rows
-        if str(row["assignee"] or "").strip()
-    ]
-
-    return {
-        "statuses": statuses,
-        "assignees": assignees,
-    }
+def _load_team_filter_options(
+    search: str | None,
+    board_id: str | None,
+    selected_teams: list[str],
+) -> dict[str, list[str]]:
+    return load_team_filter_options(search=search, board_id=board_id, selected_teams=selected_teams)
 
 
 def _group_tickets_by_assignee(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -228,6 +208,7 @@ def _group_tickets_by_assignee(items: list[dict[str, Any]]) -> list[dict[str, An
 def _load_ticket_rows(
     statuses: list[str],
     assignees: list[str],
+    teams: list[str],
     excluded_statuses: list[str],
     excluded_assignees: list[str],
     search: str | None,
@@ -235,316 +216,57 @@ def _load_ticket_rows(
     limit: int,
     offset: int,
 ) -> tuple[int, list[dict[str, Any]]]:
-    where_clause, params = _build_ticket_filter_clause(
+    return load_ticket_rows(
         statuses=statuses,
         assignees=assignees,
+        teams=teams,
         excluded_statuses=excluded_statuses,
         excluded_assignees=excluded_assignees,
         search=search,
         board_id=board_id,
+        limit=limit,
+        offset=offset,
     )
-
-    with get_connection() as conn:
-        count_query = f"SELECT COUNT(*) AS count FROM tickets_current {where_clause}"
-        total = int(conn.execute(count_query, params).fetchone()["count"])
-
-        query = f"""
-            SELECT *
-            FROM tickets_current
-            {where_clause}
-            ORDER BY updated DESC, ticket_key ASC
-            LIMIT ? OFFSET ?
-        """
-        rows = conn.execute(query, [*params, limit, offset]).fetchall()
-
-    items: list[dict[str, Any]] = []
-    for row in rows:
-        source_links = json.loads(row["source_links_json"] or "[]")
-        dependencies = json.loads(row["dependencies_json"] or "{}")
-        items.append(
-            {
-                "ticket_key": row["ticket_key"],
-                "project_key": row["project_key"],
-                "summary": row["summary"],
-                "status": row["status"],
-                "assignee": row["assignee"],
-                "priority": row["priority"],
-                "issue_type": row["issue_type"],
-                "reporter": row["reporter"],
-                "updated": row["updated"],
-                "due_date": row["due_date"],
-                "story_points": row["story_points"],
-                "time_estimate": row["time_estimate"],
-                "time_spent": row["time_spent"],
-                "source_links": source_links,
-                "dependencies": dependencies,
-            }
-        )
-    return total, items
 
 
 def _calculate_metrics(
     statuses: list[str],
     assignees: list[str],
+    teams: list[str],
     excluded_statuses: list[str],
     excluded_assignees: list[str],
     search: str | None,
     board_id: str | None,
 ) -> dict[str, Any]:
-    where_clause, params = _build_ticket_filter_clause(
+    return calculate_metrics(
         statuses=statuses,
         assignees=assignees,
+        teams=teams,
         excluded_statuses=excluded_statuses,
         excluded_assignees=excluded_assignees,
         search=search,
         board_id=board_id,
     )
-
-    with get_connection() as conn:
-        by_status_rows = conn.execute(
-            f"""
-            SELECT status, COUNT(*) AS count
-            FROM tickets_current
-            {where_clause}
-            GROUP BY status
-            ORDER BY status ASC
-            """,
-            params,
-        ).fetchall()
-
-        active_tickets = sum(int(row["count"]) for row in by_status_rows)
-
-        open_bug_count = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM tickets_current
-                {_extend_where_clause(where_clause, "LOWER(issue_type) = 'bug' AND (resolution_date IS NULL OR resolution_date = '')")}
-                """,
-                params,
-            ).fetchone()["count"]
-        )
-
-        stale_tickets = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM tickets_current
-                {_extend_where_clause(where_clause, "(updated IS NULL OR updated = '' OR datetime(updated) <= datetime('now', '-14 day'))")}
-                """,
-                params,
-            ).fetchone()["count"]
-        )
-
-        dependency_where_clause = where_clause.replace("WHERE", "", 1).strip()
-        if dependency_where_clause:
-            dependency_where = (
-                "WHERE source_ticket_key IN (SELECT ticket_key FROM tickets_current "
-                f"{where_clause})"
-            )
-            dependency_params = params
-        else:
-            dependency_where = ""
-            dependency_params = []
-
-        blockers = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM ticket_dependencies_current
-                {dependency_where}
-                {'AND' if dependency_where else 'WHERE'} dependency_type = 'blockers'
-                """,
-                dependency_params,
-            ).fetchone()["count"]
-        )
-
-        inter_team = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM ticket_dependencies_current
-                {dependency_where}
-                {'AND' if dependency_where else 'WHERE'} classification = 'inter_team'
-                """,
-                dependency_params,
-            ).fetchone()["count"]
-        )
-
-        intra_team = int(
-            conn.execute(
-                f"""
-                SELECT COUNT(*) AS count
-                FROM ticket_dependencies_current
-                {dependency_where}
-                {'AND' if dependency_where else 'WHERE'} classification = 'intra_team'
-                """,
-                dependency_params,
-            ).fetchone()["count"]
-        )
-
-    return {
-        "kpis": {
-            "total_active_tickets": active_tickets,
-            "open_bug_count": open_bug_count,
-            "stale_tickets_over_14_days": stale_tickets,
-        },
-        "active_by_status": [
-            {"status": row["status"] or "Unknown", "count": int(row["count"])} for row in by_status_rows
-        ],
-        "dependency_summary": {
-            "blockers": blockers,
-            "inter_team": inter_team,
-            "intra_team": intra_team,
-        },
-    }
 
 
 def _build_network_graph(
     statuses: list[str],
     assignees: list[str],
+    teams: list[str],
     excluded_statuses: list[str],
     excluded_assignees: list[str],
     search: str | None,
     board_id: str | None,
 ) -> dict[str, Any]:
-    where_clause, params = _build_ticket_filter_clause(
+    return build_network_graph(
         statuses=statuses,
         assignees=assignees,
+        teams=teams,
         excluded_statuses=excluded_statuses,
         excluded_assignees=excluded_assignees,
         search=search,
         board_id=board_id,
     )
-
-    with get_connection() as conn:
-        ticket_rows = conn.execute(
-            f"""
-            SELECT ticket_key, summary, status, assignee, priority, reporter, issue_type, story_points
-            FROM tickets_current
-            {where_clause}
-            ORDER BY ticket_key ASC
-            """,
-            params,
-        ).fetchall()
-
-        edge_where_clause = (
-            "WHERE source_ticket_key IN (SELECT ticket_key FROM tickets_current "
-            f"{where_clause}) OR target_ticket_key IN (SELECT ticket_key FROM tickets_current "
-            f"{where_clause})"
-            if where_clause
-            else ""
-        )
-        edge_params = [*params, *params] if where_clause else []
-
-        dep_rows = conn.execute(
-            f"""
-            SELECT source_ticket_key, target_ticket_key, relation_name, relation_description,
-                   dependency_type, classification, target_status
-            FROM ticket_dependencies_current
-            {edge_where_clause}
-            ORDER BY source_ticket_key ASC, target_ticket_key ASC
-            """,
-            edge_params,
-        ).fetchall()
-
-        node_map: dict[str, dict[str, Any]] = {
-            str(row["ticket_key"]): {
-                "id": row["ticket_key"],
-                "ticket_key": row["ticket_key"],
-                "summary": row["summary"],
-                "status": row["status"],
-                "assignee": row["assignee"],
-                "priority": row["priority"],
-                "reporter": row["reporter"],
-                "issue_type": row["issue_type"],
-                "story_points": row["story_points"],
-            }
-            for row in ticket_rows
-        }
-
-        target_status_by_key: dict[str, str] = {}
-        missing_target_keys: set[str] = set()
-        for row in dep_rows:
-            target_key = str(row["target_ticket_key"] or "").strip()
-            if not target_key:
-                continue
-            if target_key not in node_map:
-                missing_target_keys.add(target_key)
-            target_status_by_key[target_key] = str(row["target_status"] or "").strip()
-
-        if missing_target_keys:
-            placeholders = ", ".join("?" for _ in missing_target_keys)
-            external_rows = conn.execute(
-                f"""
-                SELECT ticket_key, summary, status, assignee, priority, reporter, issue_type, story_points
-                FROM tickets_current
-                WHERE ticket_key IN ({placeholders})
-                """,
-                list(missing_target_keys),
-            ).fetchall()
-
-            for row in external_rows:
-                node_map[str(row["ticket_key"])] = {
-                    "id": row["ticket_key"],
-                    "ticket_key": row["ticket_key"],
-                    "summary": row["summary"],
-                    "status": row["status"],
-                    "assignee": row["assignee"],
-                    "priority": row["priority"],
-                    "reporter": row["reporter"],
-                    "issue_type": row["issue_type"],
-                    "story_points": row["story_points"],
-                }
-
-        for target_key in missing_target_keys:
-            if target_key in node_map:
-                continue
-            node_map[target_key] = {
-                "id": target_key,
-                "ticket_key": target_key,
-                "summary": "Dependency target outside cached ticket scope",
-                "status": target_status_by_key.get(target_key, "Unknown"),
-                "assignee": "",
-                "priority": "",
-                "reporter": "",
-                "issue_type": "",
-                "story_points": None,
-            }
-
-    connected_keys: set[str] = set()
-    edges: list[dict[str, Any]] = []
-    for row in dep_rows:
-        source_key = str(row["source_ticket_key"] or "").strip()
-        target_key = str(row["target_ticket_key"] or "").strip()
-        if not source_key or not target_key:
-            continue
-        connected_keys.add(source_key)
-        connected_keys.add(target_key)
-        edges.append(
-            {
-                "source_ticket": source_key,
-                "target_ticket": target_key,
-                "relation_name": row["relation_name"],
-                "relation_description": row["relation_description"],
-                "dependency_type": row["dependency_type"],
-                "classification": row["classification"],
-            }
-        )
-
-    nodes = sorted(
-        [node for key, node in node_map.items() if key in connected_keys],
-        key=lambda node: str(node.get("ticket_key") or ""),
-    )
-
-    return {
-        "nodes": nodes,
-        "edges": edges,
-        "counts": {
-            "nodes": len(nodes),
-            "edges": len(edges),
-        },
-    }
 
 
 def _run_single_sync(trigger_type: str) -> str:
@@ -681,6 +403,7 @@ def start_manual_sync() -> dict[str, Any]:
 def get_tickets(
     status: list[str] | None = Query(default=None),
     assignee: list[str] | None = Query(default=None),
+    team: list[str] | None = Query(default=None),
     status_exclude: list[str] | None = Query(default=None),
     assignee_exclude: list[str] | None = Query(default=None),
     search: str | None = Query(default=None),
@@ -691,12 +414,14 @@ def get_tickets(
     # Keep CSV fallback for status for URL backward-compat; assignee names may contain commas.
     status_values = _parse_multi_query_values(status, allow_csv=True)
     assignee_values = _parse_multi_query_values(assignee, allow_csv=False)
+    team_values = _parse_multi_query_values(team, allow_csv=False)
     excluded_status_values = _parse_multi_query_values(status_exclude, allow_csv=True)
     excluded_assignee_values = _parse_multi_query_values(assignee_exclude, allow_csv=False)
 
     total, rows = _load_ticket_rows(
         statuses=status_values,
         assignees=assignee_values,
+        teams=team_values,
         excluded_statuses=excluded_status_values,
         excluded_assignees=excluded_assignee_values,
         search=search,
@@ -705,8 +430,23 @@ def get_tickets(
         offset=offset,
     )
 
-    filter_options = _load_filter_options(search=search, board_id=board_id)
-    grouped = _group_tickets_by_assignee(rows)
+    filter_options = _load_team_filter_options(
+        search=search,
+        board_id=board_id,
+        selected_teams=team_values,
+    )
+    grouped_payload = load_grouped_tickets_by_team(
+        statuses=status_values,
+        assignees=assignee_values,
+        teams=team_values,
+        excluded_statuses=excluded_status_values,
+        excluded_assignees=excluded_assignee_values,
+        search=search,
+        board_id=board_id,
+        limit=limit,
+        offset=offset,
+    )
+    grouped = grouped_payload.get("groups", []) if isinstance(grouped_payload, dict) else _group_tickets_by_assignee(rows)
 
     return {
         "total": total,
@@ -722,6 +462,7 @@ def get_tickets(
 def get_metrics(
     status: list[str] | None = Query(default=None),
     assignee: list[str] | None = Query(default=None),
+    team: list[str] | None = Query(default=None),
     status_exclude: list[str] | None = Query(default=None),
     assignee_exclude: list[str] | None = Query(default=None),
     search: str | None = Query(default=None),
@@ -730,6 +471,7 @@ def get_metrics(
     return _calculate_metrics(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
+        teams=_parse_multi_query_values(team, allow_csv=False),
         excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
         excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
         search=search,
@@ -741,12 +483,40 @@ def get_metrics(
 def get_network(
     status: list[str] | None = Query(default=None),
     assignee: list[str] | None = Query(default=None),
+    team: list[str] | None = Query(default=None),
     status_exclude: list[str] | None = Query(default=None),
     assignee_exclude: list[str] | None = Query(default=None),
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
     return _build_network_graph(
+        statuses=_parse_multi_query_values(status, allow_csv=True),
+        assignees=_parse_multi_query_values(assignee, allow_csv=False),
+        teams=_parse_multi_query_values(team, allow_csv=False),
+        excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
+        excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
+        search=search,
+        board_id=board_id,
+    )
+
+
+@app.get("/api/teams")
+def get_teams_workspace() -> dict[str, Any]:
+    return load_teams_workspace_data()
+
+
+@app.get("/api/teams/{team_id}")
+def get_team_details(
+    team_id: str,
+    status: list[str] | None = Query(default=None),
+    assignee: list[str] | None = Query(default=None),
+    status_exclude: list[str] | None = Query(default=None),
+    assignee_exclude: list[str] | None = Query(default=None),
+    search: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    return load_team_detail_panels(
+        team_id=team_id,
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
         excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),

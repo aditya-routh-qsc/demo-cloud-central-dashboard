@@ -1,0 +1,1347 @@
+{
+  "fetched_at": "2026-06-04T08:52:34.078958+00:00",
+  "domain": "qsc.atlassian.net",
+  "cloud_id": "cbb0eec9-464c-4815-86a3-6f97352c86df",
+  "tql_query": "(name LIKE 'reflect cloud') AND (showEmptyTeams = true)",
+  "sync_counts": {
+    "teams_upserted": 22,
+    "members_upserted": 155
+  },
+  "teams_data": {
+    "data": {
+      "team": {
+        "teamSearchV2": {
+          "nodes": [
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/dcdc5368-3999-43f2-9eb7-0317ba665835",
+                "displayName": "Reflect Manager",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "5d7adc343362320d26a17c69",
+                        "name": "Fedorchuk, Yurii Fedorchuk -CTR",
+                        "email": "yzf02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adceff794970dbfeb5e6c",
+                        "name": "Mazurenko, Vitalii Mazurenko -CTR",
+                        "email": "vzm06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc21ae19790db93fed4d",
+                        "name": "Tymkiv, Andrii Tymkiv -CTR",
+                        "email": "azt21@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/66f0bac4-1cf0-474c-be59-2d4edaa8615f",
+                "displayName": "Reflect Infra",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "60edb54ff314ff006a51c578",
+                        "name": "Eicher, Emily E",
+                        "email": "eee02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc343362320d26a17c69",
+                        "name": "Fedorchuk, Yurii Fedorchuk -CTR",
+                        "email": "yzf02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7add213362320d26a17c7c",
+                        "name": "Marchenko, Dmytro Marchenko -CTR",
+                        "email": "dzm34@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc47656e2a0dbab2fc13",
+                        "name": "Vovk, Denys Vovk -CTR",
+                        "email": "dzv10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adcecb2698f0da457f78a",
+                        "name": "Lizunov, Roman Lizunov -CTR",
+                        "email": "rzl11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adceff794970dbfeb5e6c",
+                        "name": "Mazurenko, Vitalii Mazurenko -CTR",
+                        "email": "vzm06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:36d92dfe-e877-48cd-a26b-2bd851a3bafa",
+                        "name": "Meagher, Ronan",
+                        "email": "rzm87@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc65b2698f0da457f782",
+                        "name": "Parneta, Anton Parneta -CTR",
+                        "email": "azp36@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc21ae19790db93fed4d",
+                        "name": "Tymkiv, Andrii Tymkiv -CTR",
+                        "email": "azt21@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/a3e842df-71e5-42be-8818-299029bdc48d",
+                "displayName": "Reflect Features",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "60edb54ff314ff006a51c578",
+                        "name": "Eicher, Emily E",
+                        "email": "eee02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "63b3fa317cde7bff9d7991ed",
+                        "name": "Muthukrishnan, Sureshkumar",
+                        "email": "szm23@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:0eb220f5-3f9f-4fd6-ab15-4ae0ed7b97ba",
+                        "name": "Sinha, Ashutosh Kumar",
+                        "email": "aks03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:ea96bfee-c6f4-464a-95cf-622d97be0888",
+                        "name": "Singh, Nishant -CTR",
+                        "email": "nzs28@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:56b8b9d2-43cc-4f84-854c-28b96f98bc77",
+                        "name": "Jain, Ruchika",
+                        "email": "rzj14@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:989321ae-5a6c-49eb-8310-6a2af1872957",
+                        "name": "Kumar, Pankaj Kumar -CTR",
+                        "email": "pzk11@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/2d8dd1f0-c166-4403-86eb-4e150e5e9217",
+                "displayName": "Reflect Fleet",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "60edb54ff314ff006a51c578",
+                        "name": "Eicher, Emily E",
+                        "email": "eee02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:1f21710c-141b-4a56-a0db-c77a4cbd88a1",
+                        "name": "Ali, Aqib Ali -CTR",
+                        "email": "aza39@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a1a482cc-2283-478c-ab88-511d5e7576cc",
+                        "name": "Singh, Amrik Singh -CTR",
+                        "email": "azs57@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d00d7de7-c580-4fba-9f45-546d587f147d",
+                        "name": "Singh, Pawan K",
+                        "email": "pks01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d92a725b-be1e-46d5-ad22-2b9cc68ebf66",
+                        "name": "Jain, Twinkle -CTR",
+                        "email": "tzj06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:0f90ae0d-d6d9-40f0-a43d-cf57a7f9bc70",
+                        "name": "Sharma, Minali -CTR",
+                        "email": "mxs12@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d42b2c2e-fb45-4140-ab31-f1174d18c31b",
+                        "name": "Anna, Sureshkumar",
+                        "email": "vza05@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:1a4094f3-702e-495d-bdf7-b131ae2e7b00",
+                        "name": "Pandey, Vikas Pandey -CTR",
+                        "email": "vzp06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:caf2a312-9ee2-4556-96ea-29fa0f687584",
+                        "name": "Goyal, Ashwani -CTR",
+                        "email": "axg03@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/5ecb9657-388e-4297-a0d7-054dc8d0a4cc",
+                "displayName": "Reflect X",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:e7c1ef32-cb6d-4a90-b769-b0cae8626a92",
+                        "name": "Johnson, Dane A",
+                        "email": "daj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:c1743e2b-d924-41f7-8574-e893c588a69d",
+                        "name": "Atai, Roman",
+                        "email": "rza11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:b7ec6426-2379-4342-a1ca-545b4a4bddf3",
+                        "name": "Tiwari, Vivek -CTR",
+                        "email": "vzt12@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/c455cd6d-fa86-4eab-b895-2c5c66f7178a",
+                "displayName": "Reflect Virtual Devices",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "5d7adc375756650c3fb11001",
+                        "name": "TN, Guru",
+                        "email": "gzt03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:0ac8f44e-50df-4b98-9500-9407b6b9f511",
+                        "name": "Chakilam, Tanmayi",
+                        "email": "szc24@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/1f250b12-1d0d-45b1-a6b0-36414e94075c",
+                "displayName": "Reflect Analytics",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:ac7e872b-f596-4ca6-b812-10cac2fc5e62",
+                        "name": "Ashok, Ananya",
+                        "email": "aza43@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:9190a2bf-985e-4fae-ae6c-fb783b0cfd24",
+                        "name": "Chauhan, Akash",
+                        "email": "azc47@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:14b65af9-cd0f-450e-bfaa-116ab8d66aa3",
+                        "name": "Bandi, Vishnu T",
+                        "email": "vtb01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:5e65727a-de90-4f33-bcd2-85562b80db75",
+                        "name": "Mohanty, Abinash",
+                        "email": "azm64@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d29bae39-d33c-4b15-a392-d63a485df00a",
+                        "name": "Mukane, Fawaz A",
+                        "email": "fam02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:926bdcbe-f7ff-41a7-8390-55319fb1b1ac",
+                        "name": "Surbhat, Abhishek",
+                        "email": "azs48@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:b1c6d5b1-ec91-4c3f-aa2c-1889d1ab72b0",
+                        "name": "Rakshit, Saswata",
+                        "email": "szr20@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d42b2c2e-fb45-4140-ab31-f1174d18c31b",
+                        "name": "Anna, Sureshkumar",
+                        "email": "vza05@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adceff794970dbfeb5e6c",
+                        "name": "Mazurenko, Vitalii Mazurenko -CTR",
+                        "email": "vzm06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6335681c140ba0bf651c1ba6",
+                        "name": "Madhavi, Giriboina",
+                        "email": "gzm11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:56b8b9d2-43cc-4f84-854c-28b96f98bc77",
+                        "name": "Jain, Ruchika",
+                        "email": "rzj14@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:3bde3ace-9463-4b19-839e-de6887a36e93",
+                        "name": "Derangula, Sivaprasad",
+                        "email": "szd16@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/ac5d6690-4818-4d84-80b8-2420e2d1f634",
+                "displayName": "Reflect Analytics",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:977d294a-0625-4ebd-a27b-2629a4527f55",
+                        "name": "Walekar, Shrutika",
+                        "email": "szw10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d29bae39-d33c-4b15-a392-d63a485df00a",
+                        "name": "Mukane, Fawaz A",
+                        "email": "fam02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/8a3f2087-6ab9-4b64-88a0-5ac1b8dba100",
+                "displayName": "Cloud and Control",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "60edb54ff314ff006a51c578",
+                        "name": "Eicher, Emily E",
+                        "email": "eee02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "62c75d9befb17d6ce62fecc8",
+                        "name": "Kopin, Tommy C",
+                        "email": "tck01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6154f161048360006afd9101",
+                        "name": "Judy, David R",
+                        "email": "drj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc218b0e290c45aa4fd8",
+                        "name": "Greg Mattson",
+                        "email": "greg.mattson@qsc.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "60cb45ba5c64b100710c99a2",
+                        "name": "Matt Cullen",
+                        "email": "matt.cullen@qsc.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/31fa7d21-c1a9-40ac-be6e-6d8bddde49db",
+                "displayName": "Cloud DataOps",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:e7c1ef32-cb6d-4a90-b769-b0cae8626a92",
+                        "name": "Johnson, Dane A",
+                        "email": "daj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/f313a1b2-b918-4fae-8c4e-3a3efb1535e5",
+                "displayName": "Cloud Services Portal",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:977d294a-0625-4ebd-a27b-2629a4527f55",
+                        "name": "Walekar, Shrutika",
+                        "email": "szw10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/2fe17af0-8e3f-4a36-94f7-55648bbf864a",
+                "displayName": "Cloud SecOps",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:c1743e2b-d924-41f7-8574-e893c588a69d",
+                        "name": "Atai, Roman",
+                        "email": "rza11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/3be316af-4d99-41b8-aede-e3ab6320e6d4",
+                "displayName": "Cloud Services",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:a5dbf197-21f3-4561-a3db-53a9d85fb8e5",
+                        "name": "Pandey, Akash Pandey -CTR",
+                        "email": "azp38@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:f27cf6cc-b1d2-4930-b0a7-bea02485f7ea",
+                        "name": "Hessler, Christian J",
+                        "email": "cjh05@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:e7c1ef32-cb6d-4a90-b769-b0cae8626a92",
+                        "name": "Johnson, Dane A",
+                        "email": "daj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:e8bbddf6-6e23-4b8f-8672-f09584eadc64",
+                        "name": "Mammen, Lasse",
+                        "email": "lzm71@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:c1743e2b-d924-41f7-8574-e893c588a69d",
+                        "name": "Atai, Roman",
+                        "email": "rza11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:977d294a-0625-4ebd-a27b-2629a4527f55",
+                        "name": "Walekar, Shrutika",
+                        "email": "szw10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d29bae39-d33c-4b15-a392-d63a485df00a",
+                        "name": "Mukane, Fawaz A",
+                        "email": "fam02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:1a4094f3-702e-495d-bdf7-b131ae2e7b00",
+                        "name": "Pandey, Vikas Pandey -CTR",
+                        "email": "vzp06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/4ad38fff-4f40-4846-aa67-505d95ccce1b",
+                "displayName": "Cloud DevOps",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:a5dbf197-21f3-4561-a3db-53a9d85fb8e5",
+                        "name": "Pandey, Akash Pandey -CTR",
+                        "email": "azp38@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:e8bbddf6-6e23-4b8f-8672-f09584eadc64",
+                        "name": "Mammen, Lasse",
+                        "email": "lzm71@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:977d294a-0625-4ebd-a27b-2629a4527f55",
+                        "name": "Walekar, Shrutika",
+                        "email": "szw10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:1a4094f3-702e-495d-bdf7-b131ae2e7b00",
+                        "name": "Pandey, Vikas Pandey -CTR",
+                        "email": "vzp06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:8e992489-1ec1-4cf0-af10-bd9bfe78b52d",
+                        "name": "Kumar, Ravinder -CTR",
+                        "email": "rzk20@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/f7ac8165-6a22-41e5-bc43-ce68c2e116ea",
+                "displayName": "Cloud FinOps",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/7e4c5deb-48c7-4a8c-ad39-87c8a83333cb",
+                "displayName": "AIS Cloud Services",
+                "description": "This team is responsible for creating, providing, maintaining, and advancing the unified cloud architecture of common services used by all of the various products and services offered by Acuity.",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/fec8b70b-ccc2-4104-bddd-7550df6cd2b8",
+                "displayName": "Cloud SRE",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:e7c1ef32-cb6d-4a90-b769-b0cae8626a92",
+                        "name": "Johnson, Dane A",
+                        "email": "daj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/9bc78906-b668-45ea-bde6-a1e0e2acd29f",
+                "displayName": "Bangalore UC&C and Control  Dev Team",
+                "description": "",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "63883d2600cb2fc3f98a8317",
+                        "name": "Hegde, Harsha S",
+                        "email": "hsh01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6305e95847d60b7107ed31b2",
+                        "name": "Kumar,Prabhat",
+                        "email": "pzk08@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "63d7588f790148a18092bd15",
+                        "name": "V, Sameernath",
+                        "email": "szv18@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "63b3fa317cde7bff9d7991ed",
+                        "name": "Muthukrishnan, Sureshkumar",
+                        "email": "szm23@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "60cb3c56758a5d006a06e4e1",
+                        "name": "Sreedhar A",
+                        "email": "sreedhar.a@qsc.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "619cf188657a0500708029d7",
+                        "name": "Gadamsetty, Narendra Kumar",
+                        "email": "nzg10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "60cb3c5618e9f60071b20694",
+                        "name": "Muthuraj, Bharath",
+                        "email": "bzm18@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/229a5b5c-1d8b-4615-8c29-70e8f402f236",
+                "displayName": "Daedalus Team",
+                "description": "The Daedalus team is focused on the integration of Acuity's many cloud services and applications through a unified collection of common services.",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:a5dbf197-21f3-4561-a3db-53a9d85fb8e5",
+                        "name": "Pandey, Akash Pandey -CTR",
+                        "email": "azp38@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:f27cf6cc-b1d2-4930-b0a7-bea02485f7ea",
+                        "name": "Hessler, Christian J",
+                        "email": "cjh05@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d4ec70d4-a905-485b-b440-7795008e28af",
+                        "name": "Christian Hessler",
+                        "email": "christian.hessler@qsc.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:e7c1ef32-cb6d-4a90-b769-b0cae8626a92",
+                        "name": "Johnson, Dane A",
+                        "email": "daj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adcb647387e0d2bcd6fd9",
+                        "name": "Burke, Mike M",
+                        "email": "cmb01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:33a5c278-2ff1-4cd4-abac-fe908e1218f2",
+                        "name": "Mark Sterin",
+                        "email": "mxs48@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:c1743e2b-d924-41f7-8574-e893c588a69d",
+                        "name": "Atai, Roman",
+                        "email": "rza11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc343362320d26a17c69",
+                        "name": "Fedorchuk, Yurii Fedorchuk -CTR",
+                        "email": "yzf02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:5468a478-099e-4176-985a-02b7ee9c2289",
+                        "name": "Blackburn, Jason R",
+                        "email": "jzb29@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7add213362320d26a17c7c",
+                        "name": "Marchenko, Dmytro Marchenko -CTR",
+                        "email": "dzm34@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:a22e0ad1-a592-4255-afc5-4a762534e32a",
+                        "name": "Mohammed Nyamathulla",
+                        "email": "mzn19@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:43fc9630-3f67-449b-94a6-b03022ee4fc6",
+                        "name": "Stedman, Kevin H",
+                        "email": "kxs34@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:977d294a-0625-4ebd-a27b-2629a4527f55",
+                        "name": "Walekar, Shrutika",
+                        "email": "szw10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:527c0ab5-c02c-4e3c-a63a-b3ac92b8e355",
+                        "name": "Bupp, Chris",
+                        "email": "cmb06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6154f161048360006afd9101",
+                        "name": "Judy, David R",
+                        "email": "drj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc47656e2a0dbab2fc13",
+                        "name": "Vovk, Denys Vovk -CTR",
+                        "email": "dzv10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adceff794970dbfeb5e6c",
+                        "name": "Mazurenko, Vitalii Mazurenko -CTR",
+                        "email": "vzm06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:1a4094f3-702e-495d-bdf7-b131ae2e7b00",
+                        "name": "Pandey, Vikas Pandey -CTR",
+                        "email": "vzp06@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:886c804f-1954-4eb1-8c9f-5821df34f2bc",
+                        "name": "Dang, Minh T",
+                        "email": "mtd02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:d7242e7a-cbb2-4385-bbf2-97633398a4f5",
+                        "name": "Pierson, Jeremy B",
+                        "email": "jbp02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "557058:32f71c89-cede-435b-8198-1096bc823260",
+                        "name": "Skogmo, Matt G",
+                        "email": "mgs05@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:899961c1-1a74-4be0-95f2-9338e2e73c54",
+                        "name": "Shafer, Anye M",
+                        "email": "ams09@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:e5b77647-1e9f-4167-ad6c-16440a128b9a",
+                        "name": "Powell, Taylor",
+                        "email": "tap03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc21ae19790db93fed4d",
+                        "name": "Tymkiv, Andrii Tymkiv -CTR",
+                        "email": "azt21@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/2beac7d3-665a-4d59-98b2-d1cf8d4b6440",
+                "displayName": "Collective Control Team",
+                "description": "The Control and Plugins Team!",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "5d7adc57cdb6650c4bf86bf2",
+                        "name": "Jesse, Seth W",
+                        "email": "swj01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "60edb54ff314ff006a51c578",
+                        "name": "Eicher, Emily E",
+                        "email": "eee02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:7a745ca0-ec4c-41e0-9727-011cb7d82d68",
+                        "name": "Pal, Ayush",
+                        "email": "azp33@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:42aad92a-d132-4cf2-ab17-751db60c637e",
+                        "name": "Abbigeri, Sneha D",
+                        "email": "sda03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "63d7c921c2b1cb6b346f47fb",
+                        "name": "Krasavage, Jason",
+                        "email": "jzk11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:0f92d843-e727-4681-8235-e4de97b6d8e1",
+                        "name": "Gingles, Caroline C",
+                        "email": "ccg03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6305e95847d60b7107ed31b2",
+                        "name": "Kumar,Prabhat",
+                        "email": "pzk08@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "62c75d9befb17d6ce62fecc8",
+                        "name": "Kopin, Tommy C",
+                        "email": "tck01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc333362320d26a17c68",
+                        "name": "Devaraj, Melina",
+                        "email": "mzd26@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc55f794970dbfeb5e64",
+                        "name": "Urbaniak, Eric",
+                        "email": "ezu02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "637e3367489de2f7f4635ac7",
+                        "name": "Lucero, Joel I",
+                        "email": "jil02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adc1007c82b0d8fa7c2b0",
+                        "name": "Karve, Rasika",
+                        "email": "rzk10@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d7adcd6656e2a0dbab2fc22",
+                        "name": "Pratt, Brian K",
+                        "email": "bkp01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "631788454fbe9c4bd0ef1acc",
+                        "name": "Eccher, Dominic A",
+                        "email": "dae01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5ecea911730ec90c19928bcf",
+                        "name": "Sadava, Louis Sadava -CTR",
+                        "email": "lzs14@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5a9ef00e81617c2a7953c19c",
+                        "name": "Sullivan, Caitlyn M",
+                        "email": "cms07@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "63b3fa317cde7bff9d7991ed",
+                        "name": "Muthukrishnan, Sureshkumar",
+                        "email": "szm23@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6385ac60f6c85b343c0ad292",
+                        "name": "K K, Ravikumara",
+                        "email": "rzk11@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "619bee81b43d5b006aeb0493",
+                        "name": "Branum, Jon",
+                        "email": "jzb28@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "557058:4a5f933a-3f6e-4caf-badb-34c85f11d0f9",
+                        "name": "John Dunn",
+                        "email": "john.dunn@qsc.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:23547c44-b463-4729-972a-50793fea34a4",
+                        "name": "Dunn, Eugene A",
+                        "email": "ead03@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:ffb667f0-e59c-4a97-ab4c-e8c4f9e7924e",
+                        "name": "D B, Bhuvan",
+                        "email": "bzd07@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/e9021212-8e02-4728-bb15-52859f7e49cf",
+                "displayName": "DC BGM Team",
+                "description": "The DC BGM Team serves as the strategic link between Product Management and Marketing. We translate product strategy into clear market positioning, customer\u2011ready messaging, and go\u2011to\u2011market execution. Our role ensures that what we build, how we communicate it, and how it reaches customers are fully aligned.",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "712020:cf7fe602-6230-4847-8efb-be223f7a4a4d",
+                        "name": "Boumpali, Niki",
+                        "email": "nzb15@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:808b1421-cbee-4f7d-83a6-3f03df7dd229",
+                        "name": "Bruce, Catherine C",
+                        "email": "cmc01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:0b25a3c5-3806-47ef-ac82-2b53a2e2e16d",
+                        "name": "Mauger, Astrid",
+                        "email": "azm73@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:2e1588dc-ea46-40d2-b6d9-3ff18c27134b",
+                        "name": "Psenak, Gaelle",
+                        "email": "gzp03@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "team": {
+                "id": "ari:cloud:identity::team/8be803a7-bd0b-4fb8-a807-8819328a1610",
+                "displayName": "Brand & Communications",
+                "description": "The QSC Brand & Communications team serves as the cornerstone of our organization's communications and brand identity.",
+                "members": {
+                  "nodes": [
+                    {
+                      "member": {
+                        "accountId": "6363bf4f01c2ff842c1a46dc",
+                        "name": "DuPont, Derek J",
+                        "email": "djd01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:04530921-18cd-4b9b-b638-330e34826b39",
+                        "name": "Reichert, Jamison M",
+                        "email": "jmr09@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:9fc1e2bd-98b0-4108-b920-8286ebe77177",
+                        "name": "Keanini, Kathy Keanini -CTR",
+                        "email": "kzk13@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "6303a8c9ed0c9b03372bf80f",
+                        "name": "Smith, Jen N",
+                        "email": "jns02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "712020:9a8e0d14-db38-483a-baf1-88ec76a61d0c",
+                        "name": "Halenbeck, Holly J",
+                        "email": "hjh02@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d92903b4af8460dd5575f74",
+                        "name": "McCoy, Brandy L",
+                        "email": "blm01@acuitysso.com"
+                      }
+                    },
+                    {
+                      "member": {
+                        "accountId": "5d928db55247770c2454414d",
+                        "name": "Perez, Maria L",
+                        "email": "mlp01@acuitysso.com"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
