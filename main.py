@@ -28,6 +28,7 @@ from database import (
     read_sync_overview,
 )
 from services import _get_runtime_inputs, get_ticket_details_from_kanban_links
+import json
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -505,7 +506,7 @@ def get_teams_workspace() -> dict[str, Any]:
     return load_teams_workspace_data()
 
 
-@app.get("/api/teams/{team_id}")
+@app.get("/api/teams/{team_id:path}")
 def get_team_details(
     team_id: str,
     status: list[str] | None = Query(default=None),
@@ -524,3 +525,33 @@ def get_team_details(
         search=search,
         board_id=board_id,
     )
+
+
+@app.get("/api/infocomm/schedule/{show}")
+def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
+    if show not in ["india", "asia", "global"]:
+        raise HTTPException(status_code=400, detail="Invalid show type")
+    
+    file_path = _frontend_dir.parent / "outputs" / f"infocomm_{show}.json"
+    
+    if refresh or not file_path.exists():
+        import asyncio
+        from scraper import scrape_schedule, SHOW_URLS, save_to_json
+        
+        url = SHOW_URLS[show]
+        try:
+            loop = asyncio.new_event_loop()
+            data = loop.run_until_complete(scrape_schedule(url))
+            loop.close()
+            if data:
+                save_to_json(data, file_path)
+            else:
+                raise Exception("Scraper returned empty data")
+        except Exception as e:
+            if file_path.exists():
+                print(f"[!] Scraper failed, falling back to cache: {e}")
+            else:
+                raise HTTPException(status_code=500, detail=f"Scraping failed: {e}")
+                
+    with open(file_path, "r", encoding="utf-8") as f:
+        return json.load(f)

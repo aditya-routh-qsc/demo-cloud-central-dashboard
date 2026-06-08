@@ -29,6 +29,12 @@ const state = {
   jiraDomain: "qsc.atlassian.net",
   charts: {},
   cy: null,
+  infocomm: {
+    selectedShow: "india",
+    selectedDate: "",
+    schedule: [],
+    loading: false,
+  },
   ui: {
     advancedFiltersOpen: true,
     sidebarCollapsed: false,
@@ -126,6 +132,11 @@ const el = {
   teamWorkDonePanel: document.getElementById("teamWorkDonePanel"),
   teamReportedPanel: document.getElementById("teamReportedPanel"),
   teamTimelinePanel: document.getElementById("teamTimelinePanel"),
+  infocommWebsiteUrl: document.getElementById("infocommWebsiteUrl"),
+  infocommScheduleTitle: document.getElementById("infocommScheduleTitle"),
+  infocommSkeleton: document.getElementById("infocommSkeleton"),
+  infocommDateTabs: document.getElementById("infocommDateTabs"),
+  infocommScheduleList: document.getElementById("infocommScheduleList"),
 };
 
 function syncSidebarDisclosure() {
@@ -1359,6 +1370,9 @@ function bindTabNavigation() {
   for (const tab of tabs) {
     tab.addEventListener("click", () => {
       setActiveTab(tab.dataset.tab);
+      if (tab.dataset.tab === "infocomm" && state.infocomm.schedule.length === 0) {
+        loadInfoCommSchedule();
+      }
     });
   }
 }
@@ -1451,6 +1465,129 @@ function bindActions() {
     }
     renderNetwork();
   });
+
+  // InfoComm Show Selector buttons
+  const showBtns = document.querySelectorAll(".infocomm-btn");
+  for (const btn of showBtns) {
+    btn.addEventListener("click", async () => {
+      for (const b of showBtns) {
+        b.classList.toggle("is-active", b.dataset.show === btn.dataset.show);
+      }
+      state.infocomm.selectedShow = btn.dataset.show;
+      await loadInfoCommSchedule();
+    });
+  }
+}
+
+async function loadInfoCommSchedule() {
+  state.infocomm.loading = true;
+  if (el.infocommSkeleton) el.infocommSkeleton.classList.add("is-visible");
+  if (el.infocommScheduleList) el.infocommScheduleList.innerHTML = "";
+  if (el.infocommDateTabs) el.infocommDateTabs.innerHTML = "";
+  
+  try {
+    const data = await apiGet(`/api/infocomm/schedule/${state.infocomm.selectedShow}`);
+    state.infocomm.schedule = data;
+    
+    // Auto-select the first date from the schedule
+    const dates = uniqueValues(data.map(item => item.date));
+    if (dates.length > 0) {
+      if (!dates.includes(state.infocomm.selectedDate)) {
+        state.infocomm.selectedDate = dates[0];
+      }
+    } else {
+      state.infocomm.selectedDate = "";
+    }
+    
+    renderInfoCommUI();
+  } catch (error) {
+    console.error("Error loading InfoComm schedule:", error);
+    if (el.infocommScheduleList) {
+      el.infocommScheduleList.innerHTML = `<p class="error-msg text-danger">Failed to load schedule: ${escapeHtml(error.message || error)}</p>`;
+    }
+  } finally {
+    state.infocomm.loading = false;
+    if (el.infocommSkeleton) el.infocommSkeleton.classList.remove("is-visible");
+  }
+}
+
+function renderInfoCommUI() {
+  if (!el.infocommDateTabs || !el.infocommScheduleList) return;
+  
+  const showNameMap = {
+    india: "InfoComm India",
+    asia: "InfoComm Asia",
+    global: "InfoComm Global",
+  };
+  const websiteMap = {
+    india: "https://www.infocomm-india.com/",
+    asia: "https://www.infocomm-asia.com/",
+    global: "https://www.infocommshow.org/",
+  };
+  
+  // Update website link
+  if (el.infocommWebsiteUrl) {
+    el.infocommWebsiteUrl.href = websiteMap[state.infocomm.selectedShow];
+    el.infocommWebsiteUrl.textContent = `Visit Official ${showNameMap[state.infocomm.selectedShow]} Website`;
+  }
+  
+  // Render Date Tabs
+  const dates = uniqueValues(state.infocomm.schedule.map(item => item.date));
+  el.infocommDateTabs.innerHTML = dates.map(date => {
+    const isActive = date === state.infocomm.selectedDate ? "is-active" : "";
+    return `<button class="infocomm-date-tab ${isActive}" data-date="${escapeHtml(date)}" type="button">${escapeHtml(date)}</button>`;
+  }).join("");
+  
+  // Add listeners to date tabs
+  const dateButtons = el.infocommDateTabs.querySelectorAll(".infocomm-date-tab");
+  for (const btn of dateButtons) {
+    btn.addEventListener("click", () => {
+      state.infocomm.selectedDate = btn.dataset.date;
+      renderInfoCommUI();
+    });
+  }
+  
+  // Render Session Cards for selected date
+  const filteredSessions = state.infocomm.schedule.filter(item => item.date === state.infocomm.selectedDate);
+  if (filteredSessions.length === 0) {
+    el.infocommScheduleList.innerHTML = '<p class="muted">No sessions scheduled for this date.</p>';
+    return;
+  }
+  
+  el.infocommScheduleList.innerHTML = `
+    <div class="infocomm-sessions-feed">
+      ${filteredSessions.map(session => {
+        const titleHtml = session.link 
+          ? `<a href="${escapeHtml(session.link)}" target="_blank">${escapeHtml(session.title)} <span class="external-icon">&#10138;</span></a>`
+          : escapeHtml(session.title);
+          
+        const locationHtml = session.location
+          ? `<span class="session-badge location">&#128205; ${escapeHtml(session.location)}</span>`
+          : "";
+          
+        const durationHtml = session.duration
+          ? `<span class="session-badge duration">&#9201; ${escapeHtml(session.duration)}</span>`
+          : "";
+          
+        const descHtml = session.description
+          ? `<p class="infocomm-session-desc">${escapeHtml(session.description)}</p>`
+          : "";
+          
+        return `
+          <article class="infocomm-session-card">
+            <div class="infocomm-session-header">
+              <h4 class="infocomm-session-title">${titleHtml}</h4>
+            </div>
+            <div class="infocomm-session-meta">
+              ${durationHtml}
+              ${locationHtml}
+            </div>
+            ${descHtml}
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function bindSidebarToggle() {

@@ -115,6 +115,10 @@
             <span class="tab-icon" aria-hidden="true">&#9783;</span>
             <span class="tab-label">Teams</span>
           </button>
+          <button class="tab" data-tab="infocomm" type="button" title="Infocomm" aria-label="Infocomm">
+            <span class="tab-icon" aria-hidden="true">&#9776;</span>
+            <span class="tab-label">Infocomm</span>
+          </button>
         </nav>
       </aside>
 
@@ -212,6 +216,28 @@
               <div id="teamWorkDonePanel" class="team-panel"></div>
               <div id="teamReportedPanel" class="team-panel"></div>
               <div id="teamTimelinePanel" class="team-panel"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="infocomm" class="view">
+          <div class="split-grid">
+            <article class="panel infocomm-selector-card">
+              <h3>InfoComm Event Selector</h3>
+              <div class="infocomm-selector">
+                <button class="infocomm-btn is-active" data-show="india" type="button">InfoComm India</button>
+                <button class="infocomm-btn" data-show="asia" type="button">InfoComm Asia</button>
+                <button class="infocomm-btn" data-show="global" type="button">InfoComm Global</button>
+              </div>
+              <div class="infocomm-website-link">
+                <a id="infocommWebsiteUrl" href="https://www.infocomm-india.com" target="_blank" class="action-btn-link">Visit Official Website</a>
+              </div>
+            </article>
+            <article class="panel infocomm-schedule-panel">
+              <h3 id="infocommScheduleTitle">InfoComm Schedule</h3>
+              <div id="infocommDateTabs" class="infocomm-date-tabs"></div>
+              <div id="infocommSkeleton" class="team-detail-skeleton"></div>
+              <div id="infocommScheduleList" class="infocomm-schedule-list"></div>
             </article>
           </div>
         </section>

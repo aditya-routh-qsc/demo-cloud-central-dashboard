@@ -837,3 +837,180 @@ a.jira-link {
     align-items: stretch;
   }
 }
+
+/* InfoComm tab styles */
+.infocomm-selector-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.infocomm-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.infocomm-btn {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  background: rgba(8, 18, 30, 0.62);
+  padding: 12px 14px;
+  text-align: left;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.infocomm-btn:hover {
+  background: rgba(29, 211, 255, 0.1);
+  border-color: rgba(29, 211, 255, 0.4);
+}
+
+.infocomm-btn.is-active {
+  border-color: rgba(29, 211, 255, 0.55);
+  background: rgba(29, 211, 255, 0.18);
+  box-shadow: 0 0 10px rgba(29, 211, 255, 0.15);
+}
+
+.infocomm-website-link {
+  margin-top: 14px;
+}
+
+.action-btn-link {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  background: linear-gradient(120deg, #0e8ef4, #1dd3ff);
+  padding: 10px 16px;
+  text-align: center;
+  width: 100%;
+}
+
+.action-btn-link:hover {
+  filter: brightness(1.08);
+}
+
+.infocomm-schedule-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.infocomm-date-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(134, 196, 253, 0.15);
+}
+
+.infocomm-date-tab {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: rgba(8, 18, 30, 0.62);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.86rem;
+  transition: all 0.2s ease;
+}
+
+.infocomm-date-tab:hover {
+  background: rgba(29, 211, 255, 0.08);
+}
+
+.infocomm-date-tab.is-active {
+  border-color: rgba(29, 211, 255, 0.55);
+  background: rgba(29, 211, 255, 0.18);
+}
+
+.infocomm-sessions-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 550px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.infocomm-session-card {
+  border: 1px solid rgba(159, 192, 222, 0.18);
+  border-radius: 10px;
+  background: rgba(8, 18, 30, 0.42);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.infocomm-session-card:hover {
+  border-color: rgba(29, 211, 255, 0.35);
+  background: rgba(8, 18, 30, 0.6);
+}
+
+.infocomm-session-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.infocomm-session-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.infocomm-session-title a {
+  color: var(--text);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.infocomm-session-title a:hover {
+  color: var(--accent);
+}
+
+.infocomm-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.session-badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+  background: rgba(14, 37, 61, 0.6);
+  color: var(--muted);
+}
+
+.session-badge.location {
+  border-color: rgba(255, 159, 67, 0.3);
+  color: #ffd3a8;
+  background: rgba(255, 159, 67, 0.08);
+}
+
+.session-badge.duration {
+  border-color: rgba(58, 210, 159, 0.3);
+  color: #c8ffe8;
+  background: rgba(58, 210, 159, 0.08);
+}
+
+.infocomm-session-desc {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.45;
+}

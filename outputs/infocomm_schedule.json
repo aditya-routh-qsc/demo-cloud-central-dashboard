@@ -1,0 +1,178 @@
+[
+  {
+    "date": "16 Sept 2026",
+    "title": "Opening Session",
+    "duration": "60 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/opening-session",
+    "description": ""
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "Education",
+    "duration": "120 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/education",
+    "description": "Supported with ICT Academy"
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "InfoComm India 101: Navigating Your First Experience",
+    "duration": "30 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/infocomm-india-101-navigating-first-experience",
+    "description": ""
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "AVIXA Xchange Live: CTS Community Meet Up",
+    "duration": "60 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/avixa-xchange-live-cts-community-meet-up",
+    "description": ""
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "Enterprise IT",
+    "duration": "150 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/enterprise",
+    "description": "Supported with CSI Mumbai"
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "Emerging Trends & AI",
+    "duration": "150 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/emerging-trends-ai",
+    "description": ""
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "AVIXA Xchange Live:AVIXA Women’s Council in India Meet up",
+    "duration": "60 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/avixa-xchange-liveavixa-womens-council-india-meet-up",
+    "description": ""
+  },
+  {
+    "date": "16 Sept 2026",
+    "title": "Welcome Networking Event (Co-organized with AVIXA)",
+    "duration": "120 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/welcome-networking-event-co-organized-avixa",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Broadcast AV",
+    "duration": "90 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/broadcast-av",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Digital Signage",
+    "duration": "120 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/digital-signage",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Connect After : Broadcast AV",
+    "duration": "30 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/connect-broadcast-av",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Regional AV Roundtable",
+    "duration": "90 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/regional-av-roundtable",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Connect After : Digital Signage",
+    "duration": "30 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/connect-digital-signage",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Conference & Collaboration",
+    "duration": "90 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/conference-collaboration",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "AVIXA Xchange Live: AV/IT Community Meet Up",
+    "duration": "60 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/avixa-xchange-live-av-community-meet-up",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Cybersecurity",
+    "duration": "180 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/cybersecurity",
+    "description": "Supported by CSI"
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Live Events/Immersive Technology",
+    "duration": "120 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/live-events-immersive-technology",
+    "description": ""
+  },
+  {
+    "date": "17 Sept 2026",
+    "title": "Connect After: Live Events/Immersive Technology",
+    "duration": "30 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/connect-live-events-immersive-technology",
+    "description": ""
+  },
+  {
+    "date": "18 Sept 2026",
+    "title": "Audio",
+    "duration": "120 mins",
+    "location": "Smart Tech Stage",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/audio",
+    "description": ""
+  },
+  {
+    "date": "18 Sept 2026",
+    "title": "Hands-On Workshop",
+    "duration": "120 mins",
+    "location": "Room 301",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/hands-workshop",
+    "description": ""
+  },
+  {
+    "date": "18 Sept 2026",
+    "title": "AVIXA Xchange Live: Rising Professionals Meet up & Networking",
+    "duration": "60 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/avixa-xchange-live-rising-professionals-meet-up-networking",
+    "description": ""
+  },
+  {
+    "date": "18 Sept 2026",
+    "title": "AVIXA Xchange Live: AV Marketers Meetup",
+    "duration": "60 mins",
+    "location": "Xchange Live",
+    "link": "https://www.infocomm-india.com/ici26-summit-agenda/avixa-xchange-live-av-marketers-meetup",
+    "description": ""
+  }
+]
