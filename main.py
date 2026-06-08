@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from config_utils import get_sync_interval_minutes
+from config_utils import get_sync_interval_minutes, get_sync_cooldown_seconds
 from database import (
     build_network_graph,
     calculate_metrics,
@@ -46,6 +46,24 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     if BackgroundScheduler is not None:
         interval_minutes = get_sync_interval_minutes()
         _log_sync(f"scheduler configured: interval_minutes={interval_minutes}")
+        
+        # Guard against reload-loop: only run startup sync if last sync completed > cooldown ago
+        run_startup_sync = True
+        try:
+            persisted = read_sync_overview()
+            last_run = persisted.get("last_run")
+            if last_run and last_run.get("completed_at"):
+                last_completed = datetime.fromisoformat(last_run["completed_at"])
+                elapsed = (datetime.now(timezone.utc) - last_completed).total_seconds()
+                cooldown = get_sync_cooldown_seconds()
+                if elapsed < cooldown:
+                    run_startup_sync = False
+                    _log_sync(f"skipping startup sync: last sync completed {elapsed:.1f}s ago (< {cooldown}s)")
+        except Exception as e:
+            _log_sync(f"error checking last sync time: {e}")
+
+        next_run = datetime.now(timezone.utc) if run_startup_sync else None
+
         _scheduler = BackgroundScheduler(timezone="UTC")
         _scheduler.add_job(
             _scheduled_sync_job,
@@ -55,6 +73,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_instances=1,
             coalesce=True,
             replace_existing=True,
+            next_run_time=next_run,
         )
         _scheduler.start()
 
@@ -83,10 +102,14 @@ _current_sync_trigger = ""
 _current_sync_started_at = ""
 _last_sync_error = ""
 _frontend_dir = Path(__file__).parent / "frontend"
+_assets_dir = Path(__file__).parent / "assets"
 
 
 if _frontend_dir.exists():
     app.mount("/app", StaticFiles(directory=str(_frontend_dir)), name="frontend-assets")
+
+if _assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
 
 def _utc_now() -> str:
@@ -98,7 +121,14 @@ def _log_sync(message: str) -> None:
     print(f"[{_utc_now()}] [sync] {message}", flush=True)
 
 
+def _unwrap_query(val: Any, default: Any = None) -> Any:
+    if type(val).__name__ == "Query":
+        return default
+    return val
+
+
 def _parse_multi_query_values(raw_values: list[str] | None, allow_csv: bool = False) -> list[str]:
+    raw_values = _unwrap_query(raw_values, None)
     parsed: list[str] = []
     seen: set[str] = set()
     for raw in raw_values or []:
@@ -294,6 +324,28 @@ def _run_single_sync(trigger_type: str) -> str:
         )
         run_id = persist_extraction_result(response, trigger_type=trigger_type)
         _log_sync(f"persisted sync run_id={run_id}")
+
+        # Run infocomm schedule scraper as part of sync
+        _log_sync("starting infocomm schedules scrape as part of sync")
+        import asyncio
+        from scraper import scrape_schedule, SHOW_URLS, save_to_json
+        
+        loop = asyncio.new_event_loop()
+        try:
+            for show, url in SHOW_URLS.items():
+                _log_sync(f"scraping infocomm schedule for show: {show} ({url})")
+                file_path = Path(__file__).parent / "outputs" / f"infocomm_{show}.json"
+                data = loop.run_until_complete(scrape_schedule(url, fallback_path=file_path))
+                if data:
+                    save_to_json(data, file_path)
+                    _log_sync(f"successfully saved infocomm_{show}.json")
+                else:
+                    _log_sync(f"no data returned for show: {show}")
+        except Exception as e:
+            _log_sync(f"failed to scrape infocomm schedules: {e}")
+        finally:
+            loop.close()
+
         return run_id
     except Exception as exc:  # noqa: BLE001
         with _state_lock:
@@ -413,6 +465,10 @@ def get_tickets(
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     # Keep CSV fallback for status for URL backward-compat; assignee names may contain commas.
+    search = _unwrap_query(search, None)
+    board_id = _unwrap_query(board_id, None)
+    limit = _unwrap_query(limit, 1000)
+    offset = _unwrap_query(offset, 0)
     status_values = _parse_multi_query_values(status, allow_csv=True)
     assignee_values = _parse_multi_query_values(assignee, allow_csv=False)
     team_values = _parse_multi_query_values(team, allow_csv=False)
@@ -469,6 +525,8 @@ def get_metrics(
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    search = _unwrap_query(search, None)
+    board_id = _unwrap_query(board_id, None)
     return _calculate_metrics(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
@@ -490,6 +548,8 @@ def get_network(
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    search = _unwrap_query(search, None)
+    board_id = _unwrap_query(board_id, None)
     return _build_network_graph(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
@@ -502,8 +562,26 @@ def get_network(
 
 
 @app.get("/api/teams")
-def get_teams_workspace() -> dict[str, Any]:
-    return load_teams_workspace_data()
+def get_teams_workspace(
+    status: list[str] | None = Query(default=None),
+    assignee: list[str] | None = Query(default=None),
+    team: list[str] | None = Query(default=None),
+    status_exclude: list[str] | None = Query(default=None),
+    assignee_exclude: list[str] | None = Query(default=None),
+    search: str | None = Query(default=None),
+    board_id: str | None = Query(default=None),
+) -> dict[str, Any]:
+    search = _unwrap_query(search, None)
+    board_id = _unwrap_query(board_id, None)
+    return load_teams_workspace_data(
+        statuses=_parse_multi_query_values(status, allow_csv=True),
+        assignees=_parse_multi_query_values(assignee, allow_csv=False),
+        teams=_parse_multi_query_values(team, allow_csv=False),
+        excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
+        excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
+        search=search,
+        board_id=board_id,
+    )
 
 
 @app.get("/api/teams/{team_id:path}")
@@ -516,6 +594,8 @@ def get_team_details(
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    search = _unwrap_query(search, None)
+    board_id = _unwrap_query(board_id, None)
     return load_team_detail_panels(
         team_id=team_id,
         statuses=_parse_multi_query_values(status, allow_csv=True),
@@ -541,7 +621,7 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
         url = SHOW_URLS[show]
         try:
             loop = asyncio.new_event_loop()
-            data = loop.run_until_complete(scrape_schedule(url))
+            data = loop.run_until_complete(scrape_schedule(url, fallback_path=file_path))
             loop.close()
             if data:
                 save_to_json(data, file_path)

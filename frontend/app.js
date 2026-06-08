@@ -42,7 +42,7 @@ const state = {
 };
 
 const pollIntervalMs = 15000;
-const mobileBreakpoint = 900;
+const mobileBreakpoint = 768;
 const maxTicketLimit = 1000;
 
 const GRAPH_SEMANTICS = {
@@ -137,6 +137,7 @@ const el = {
   infocommSkeleton: document.getElementById("infocommSkeleton"),
   infocommDateTabs: document.getElementById("infocommDateTabs"),
   infocommScheduleList: document.getElementById("infocommScheduleList"),
+  themeToggleBtn: document.getElementById("themeToggleBtn"),
 };
 
 function syncSidebarDisclosure() {
@@ -195,8 +196,11 @@ function syncAdvancedFiltersDisclosure() {
   }
 
   const isOpen = state.ui.advancedFiltersOpen;
+  const label = isOpen ? "Hide filters" : "Advanced filters";
   el.toggleAdvancedFiltersBtn.setAttribute("aria-expanded", String(isOpen));
-  el.toggleAdvancedFiltersBtn.textContent = isOpen ? "Hide advanced filters" : "Show advanced filters";
+  // Rebuild button contents preserving the icon
+  el.toggleAdvancedFiltersBtn.innerHTML = `<i data-lucide="sliders-horizontal" class="btn-icon-left" aria-hidden="true"></i><span>${label}</span>`;
+  if (window.lucide) window.lucide.createIcons();
   el.advancedFilters.classList.toggle("is-collapsed", !isOpen);
   el.advancedFilters.hidden = !isOpen;
 }
@@ -281,12 +285,35 @@ function getClassificationEntry(rawValue) {
 }
 
 function buildNetworkStyles() {
+  const isDark = document.body.getAttribute("data-theme") === "dark";
+  const getThemeColor = (key, defaultColor) => {
+    if (isDark) return defaultColor;
+    const lightOverrides = {
+      // Edges
+      "blockers": "#e67e22",
+      "blocks": "#e74c3c",
+      "depends_on": "#27ae60",
+      "relates_to": "#2980b9",
+      "duplicates": "#8e44ad",
+      // Nodes (Pastel backgrounds)
+      "bug": "#fecaca",
+      "story": "#bfdbfe",
+      "task": "#bbf7d0",
+      "epic": "#e9d5ff",
+      "sub_task": "#fed7aa",
+      "unknown": "#cbd5e1",
+    };
+    return lightOverrides[key] || defaultColor;
+  };
+
+  const labelColor = isDark ? "#ffffff" : "#0f172a";
+
   const styles = [
     {
       selector: "node",
       style: {
-        "background-color": ISSUE_TYPE_BY_KEY.get("unknown").color,
-        color: "#eef7ff",
+        "background-color": getThemeColor("unknown", ISSUE_TYPE_BY_KEY.get("unknown").color),
+        color: labelColor,
         "font-size": 9,
         "text-valign": "center",
         label: "data(ticket_key)",
@@ -296,9 +323,9 @@ function buildNetworkStyles() {
       selector: "edge",
       style: {
         width: 2,
-        "line-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
-        "target-arrow-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
-        "source-arrow-color": DEPENDENCY_TYPE_BY_KEY.get("unknown").color,
+        "line-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
+        "target-arrow-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
+        "source-arrow-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
         "source-arrow-shape": "none",
         "target-arrow-shape": "triangle",
         "curve-style": "bezier",
@@ -310,18 +337,19 @@ function buildNetworkStyles() {
     styles.push({
       selector: `node[issue_type_key = '${entry.key}']`,
       style: {
-        "background-color": entry.color,
+        "background-color": getThemeColor(entry.key, entry.color),
       },
     });
   }
 
   for (const entry of GRAPH_SEMANTICS.dependencyTypes) {
+    const col = getThemeColor(entry.key, entry.color);
     styles.push({
       selector: `edge[dependency_type_key = '${entry.key}']`,
       style: {
-        "line-color": entry.color,
-        "target-arrow-color": entry.color,
-        "source-arrow-color": entry.color,
+        "line-color": col,
+        "target-arrow-color": col,
+        "source-arrow-color": col,
       },
     });
   }
@@ -861,13 +889,39 @@ function renderStoryPointsChart() {
     byStatus.set(key, (byStatus.get(key) || 0) + points);
   }
 
+  const totalPoints = Array.from(byStatus.values()).reduce((sum, v) => sum + v, 0);
+  const hasPointsData = totalPoints > 0;
+
+  // Fall back to ticket count per status when no story points are recorded
+  let labels, data, chartLabel;
+  if (hasPointsData) {
+    labels = Array.from(byStatus.keys());
+    data = Array.from(byStatus.values());
+    chartLabel = "Story points";
+  } else {
+    const byCount = new Map();
+    for (const ticket of state.tickets) {
+      const key = ticket.status || "Unknown";
+      byCount.set(key, (byCount.get(key) || 0) + 1);
+    }
+    labels = Array.from(byCount.keys());
+    data = Array.from(byCount.values());
+    chartLabel = "Tickets (no story points)";
+  }
+
+  // Update the chart title to reflect what is being shown
+  const chartHeading = document.querySelector("#metrics .panel:first-child h3");
+  if (chartHeading) {
+    chartHeading.textContent = hasPointsData ? "Story points by status" : "Tickets count by status";
+  }
+
   makeChart("storyPointsChart", {
     type: "bar",
     data: {
-      labels: Array.from(byStatus.keys()),
+      labels,
       datasets: [{
-        label: "Story points",
-        data: Array.from(byStatus.values()),
+        label: chartLabel,
+        data,
         backgroundColor: "rgba(58, 210, 159, 0.66)",
       }],
     },
@@ -953,6 +1007,9 @@ function renderTickets() {
   });
 
   el.ticketsGroups.innerHTML = sections.join("");
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 }
 
 function renderTeamsWorkspace() {
@@ -971,7 +1028,7 @@ function renderTeamsWorkspace() {
       if (!profileUrl) {
         return `<li>${label}</li>`;
       }
-      return `<li><a class="jira-link" href="${profileUrl}" target="_blank" rel="noopener noreferrer">${label} <span class="external-icon" aria-hidden="true">&#8599;</span></a></li>`;
+      return `<li><a class="jira-link" href="${profileUrl}" target="_blank" rel="noopener noreferrer">${label} <i data-lucide="external-link" class="external-icon" aria-hidden="true"></i></a></li>`;
     });
 
     return `<article class="team-card ${state.selectedTeamId === team.team_id ? "is-selected" : ""}" data-team-id="${escapeHtml(team.team_id)}">
@@ -992,6 +1049,10 @@ function renderTeamsWorkspace() {
       renderTeamsWorkspace();
       await loadSelectedTeamDetail();
     });
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
   }
 }
 
@@ -1066,7 +1127,7 @@ async function loadSelectedTeamDetail() {
   state.teamDetailLoading = true;
   el.teamDetailSkeleton.classList.add("is-visible");
   try {
-    state.teamDetail = await apiGet(buildSharedFilterQuery(`/api/teams/${encodeURIComponent(state.selectedTeamId)}`));
+    state.teamDetail = await apiGet(`/api/teams/${encodeURIComponent(state.selectedTeamId)}`);
   } catch (_error) {
     state.teamDetail = null;
   } finally {
@@ -1278,12 +1339,24 @@ function refreshFilterOptions() {
 }
 
 async function loadSyncStatus() {
+  const previousSync = state.sync;
   try {
     state.sync = await apiGet("/api/sync/status");
   } catch (_error) {
     state.sync = null;
   }
   renderSyncChip();
+
+  if (previousSync && state.sync) {
+    const prevRunning = previousSync.runtime?.is_running;
+    const currRunning = state.sync.runtime?.is_running;
+    const prevRunId = previousSync.persisted?.last_run?.run_id;
+    const currRunId = state.sync.persisted?.last_run?.run_id;
+
+    if ((prevRunning && !currRunning) || (prevRunId !== currRunId)) {
+      await loadDashboardData();
+    }
+  }
 }
 
 async function loadDashboardData() {
@@ -1294,7 +1367,7 @@ async function loadDashboardData() {
     apiGet(buildSharedFilterQuery("/api/metrics")),
     apiGet(buildTicketsQuery()),
     apiGet(buildSharedFilterQuery("/api/network")),
-    apiGet("/api/teams"),
+    apiGet(buildSharedFilterQuery("/api/teams")),
   ]);
 
   if (metricsResult.status !== "fulfilled") {
@@ -1327,8 +1400,9 @@ async function loadDashboardData() {
 
   if (teamsWorkspaceResult.status === "fulfilled") {
     state.teamsWorkspace = teamsWorkspaceResult.value;
-    if (!state.selectedTeamId) {
-      const teams = Array.isArray(state.teamsWorkspace?.teams) ? state.teamsWorkspace.teams : [];
+    const teams = Array.isArray(state.teamsWorkspace?.teams) ? state.teamsWorkspace.teams : [];
+    const teamIds = new Set(teams.map(t => String(t.team_id || "").trim()));
+    if (!state.selectedTeamId || !teamIds.has(state.selectedTeamId)) {
       state.selectedTeamId = String(teams[0]?.team_id || "").trim();
     }
   } else {
@@ -1558,15 +1632,15 @@ function renderInfoCommUI() {
     <div class="infocomm-sessions-feed">
       ${filteredSessions.map(session => {
         const titleHtml = session.link 
-          ? `<a href="${escapeHtml(session.link)}" target="_blank">${escapeHtml(session.title)} <span class="external-icon">&#10138;</span></a>`
+          ? `<a href="${escapeHtml(session.link)}" target="_blank">${escapeHtml(session.title)} <i data-lucide="external-link" class="external-icon" aria-hidden="true"></i></a>`
           : escapeHtml(session.title);
           
         const locationHtml = session.location
-          ? `<span class="session-badge location">&#128205; ${escapeHtml(session.location)}</span>`
+          ? `<span class="session-badge location"><i data-lucide="map-pin" aria-hidden="true"></i> ${escapeHtml(session.location)}</span>`
           : "";
           
         const durationHtml = session.duration
-          ? `<span class="session-badge duration">&#9201; ${escapeHtml(session.duration)}</span>`
+          ? `<span class="session-badge duration"><i data-lucide="clock" aria-hidden="true"></i> ${escapeHtml(session.duration)}</span>`
           : "";
           
         const descHtml = session.description
@@ -1588,6 +1662,10 @@ function renderInfoCommUI() {
       }).join("")}
     </div>
   `;
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 }
 
 function bindSidebarToggle() {
@@ -1602,16 +1680,39 @@ function bindSidebarToggle() {
   });
 }
 
+function bindThemeToggle() {
+  if (!el.themeToggleBtn) {
+    return;
+  }
+
+  const savedTheme = localStorage.getItem("theme") || "light";
+  document.body.setAttribute("data-theme", savedTheme);
+
+  el.themeToggleBtn.addEventListener("click", () => {
+    const currentTheme = document.body.getAttribute("data-theme") || "light";
+    const nextTheme = currentTheme === "light" ? "dark" : "light";
+    document.body.setAttribute("data-theme", nextTheme);
+    localStorage.setItem("theme", nextTheme);
+    if (state.cy) {
+      renderNetwork();
+    }
+  });
+}
+
 async function bootstrap() {
   readStateFromQuery();
   bindTabNavigation();
   bindSidebarToggle();
   bindFilterDisclosure();
+  bindThemeToggle();
   bindActions();
   await loadSyncStatus();
   await loadDashboardData();
   syncInputsFromState();
   setInterval(loadSyncStatus, pollIntervalMs);
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
 }
 
 bootstrap();

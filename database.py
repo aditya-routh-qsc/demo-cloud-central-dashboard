@@ -924,6 +924,13 @@ def load_team_workspace_overview(
             }
         )
 
+    has_other_filter = bool(statuses or assignees or excluded_statuses or excluded_assignees or search or board_id)
+    if has_other_filter:
+        cards = [
+            card for card in cards
+            if card["metrics"]["total_assigned"] > 0 or card["metrics"]["reported"] > 0
+        ]
+
     return {
         "teams": cards,
         "counts": {
@@ -1108,16 +1115,24 @@ def load_grouped_tickets_by_team(
     }
 
 
-def load_teams_workspace_data() -> dict[str, Any]:
+def load_teams_workspace_data(
+    statuses: list[str],
+    assignees: list[str],
+    excluded_statuses: list[str],
+    excluded_assignees: list[str],
+    teams: list[str],
+    search: str | None,
+    board_id: str | None,
+) -> dict[str, Any]:
     """Return data payload for teams workspace."""
     return load_team_workspace_overview(
-        statuses=[],
-        assignees=[],
-        excluded_statuses=[],
-        excluded_assignees=[],
-        teams=[],
-        search=None,
-        board_id=None,
+        statuses=statuses,
+        assignees=assignees,
+        excluded_statuses=excluded_statuses,
+        excluded_assignees=excluded_assignees,
+        teams=teams,
+        search=search,
+        board_id=board_id,
     )
 
 

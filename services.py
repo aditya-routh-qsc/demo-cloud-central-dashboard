@@ -27,6 +27,8 @@ from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from urllib3.util.retry import Retry
 
+from config_utils import get_database_path
+
 urllib3.disable_warnings()
 
 load_dotenv(override=True)
@@ -1693,7 +1695,7 @@ def create_jira_teams_response_json_file(
     resolved_api_token = (api_token or ATLASSIAN_TOKEN).strip()
     resolved_cloud_id = (cloud_id or _resolve_cloud_id(resolved_domain)).strip()
     resolved_tql_query = (tql_query or os.getenv("ATLASSIAN_TEAM_TQL_QUERY", "")).strip()
-    resolved_db_path = (db_path or os.getenv("DASHBOARD_DB_PATH", "dashboard_cache.db")).strip()
+    resolved_db_path = (db_path or get_database_path()).strip()
 
     if not resolved_domain:
         raise ValueError("Missing Jira team sync input: domain")

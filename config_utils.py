@@ -28,37 +28,14 @@ def load_config(config_path: str | None = None) -> configparser.ConfigParser:
 
 
 def get_sync_interval_minutes() -> int:
-    """Return scheduler interval in minutes from .env with safe fallback."""
-    env_value = os.getenv("SCHEDULED_SYNC_INTERVAL_MINUTES", "").strip()
-    if env_value:
-        try:
-            parsed = int(env_value)
-        except ValueError:
-            logger.warning(
-                "Invalid SCHEDULED_SYNC_INTERVAL_MINUTES='%s'. Using default %s.",
-                env_value,
-                DEFAULT_SYNC_INTERVAL_MINUTES,
-            )
-            return DEFAULT_SYNC_INTERVAL_MINUTES
-
-        if parsed < MIN_SYNC_INTERVAL_MINUTES or parsed > MAX_SYNC_INTERVAL_MINUTES:
-            logger.warning(
-                "Out-of-range SCHEDULED_SYNC_INTERVAL_MINUTES='%s'. Allowed range is %s-%s. Using default %s.",
-                env_value,
-                MIN_SYNC_INTERVAL_MINUTES,
-                MAX_SYNC_INTERVAL_MINUTES,
-                DEFAULT_SYNC_INTERVAL_MINUTES,
-            )
-            return DEFAULT_SYNC_INTERVAL_MINUTES
-        return parsed
-
+    """Return scheduler interval in minutes from .config with safe fallback."""
     parser = load_config()
     raw_value = parser.get("sync", "interval_minutes", fallback=str(DEFAULT_SYNC_INTERVAL_MINUTES)).strip()
     try:
         parsed = int(raw_value)
     except ValueError:
         logger.warning(
-            "Invalid legacy .config sync.interval_minutes='%s'. Using default %s.",
+            "Invalid .config sync.interval_minutes='%s'. Using default %s.",
             raw_value,
             DEFAULT_SYNC_INTERVAL_MINUTES,
         )
@@ -77,9 +54,22 @@ def get_sync_interval_minutes() -> int:
     return parsed
 
 
-def get_database_path() -> str:
-    """Return sqlite file path from .config/env with fallback."""
+def get_sync_cooldown_seconds() -> int:
+    """Return sync cooldown in seconds from .config with safe fallback."""
     parser = load_config()
-    configured = parser.get("database", "path", fallback="").strip()
-    env_value = os.getenv("DASHBOARD_DB_PATH", "").strip()
-    return env_value or configured or "dashboard_cache.db"
+    raw_value = parser.get("sync", "cooldown_seconds", fallback="300").strip()
+    try:
+        return int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid .config sync.cooldown_seconds='%s'. Using default 300.",
+            raw_value,
+        )
+        return 300
+
+
+def get_database_path() -> str:
+    """Return sqlite file path from .config with fallback."""
+    parser = load_config()
+    configured = parser.get("database", "path", fallback="dashboard_cache.db").strip()
+    return configured

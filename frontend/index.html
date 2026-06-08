@@ -1,47 +1,107 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloud Central Dashboard</title>
+  <title>Q-Sys Reflect Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/app/style.css?v=20260604-1" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/app/style.css?v=20260609-1" />
+  <link rel="icon" type="image/png" href="/assets/images/qsys-logo.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.0/dist/cytoscape.min.js" defer></script>
-  <script src="/app/app.js?v=20260604-1" defer></script>
+  <script src="https://unpkg.com/lucide@0.400.0" defer></script>
+  <script src="/app/app.js?v=20260609-1" defer></script>
 </head>
+
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
 
   <div class="dashboard-shell">
-    <header class="topbar panel">
-      <div class="brand-wrap">
-        <div class="brand-dot" aria-hidden="true"></div>
-        <div>
-          <h1>Cloud Central Dashboard</h1>
-          <p>Jira runtime intelligence for dependency and risk visibility</p>
-        </div>
-      </div>
-      <div class="sync-wrap">
-        <span id="syncChip" class="sync-chip">Sync status: loading...</span>
-        <button id="manualSyncBtn" class="action-btn" type="button">Sync now</button>
-      </div>
-    </header>
-
-    <section class="filters panel" aria-label="Unified filters">
-      <div class="filters-primary">
-        <div class="field filters-search">
-          <label for="searchInput">Search</label>
-          <input id="searchInput" placeholder="Ticket key or summary" />
-        </div>
-        <button id="toggleAdvancedFiltersBtn" class="ghost-btn filters-toggle" type="button" aria-expanded="true" aria-controls="advancedFilters">
-          Advanced filters
+    <!-- Left Sidebar Navigation Rail -->
+    <aside class="sidebar panel" aria-label="Dashboard views">
+      <button id="toggleSidebarBtn" class="ghost-btn sidebar-toggle" type="button" aria-expanded="true"
+        aria-controls="dashboardTabs">
+        <i data-lucide="menu" class="sidebar-toggle-icon" aria-hidden="true"></i>
+        <span class="sidebar-toggle-label">Collapse sidebar</span>
+      </button>
+      <nav id="dashboardTabs" class="tabs" aria-label="Dashboard views">
+        <button class="tab is-active" data-tab="overview" type="button" title="Overview" aria-label="Overview">
+          <i data-lucide="home" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Overview</span>
         </button>
-      </div>
+        <button class="tab" data-tab="network" type="button" title="Network" aria-label="Network">
+          <i data-lucide="network" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Dependencies Network</span>
+        </button>
+        <button class="tab" data-tab="metrics" type="button" title="Metrics" aria-label="Metrics">
+          <i data-lucide="bar-chart-3" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Ticket Metrics</span>
+        </button>
+        <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
+          <i data-lucide="ticket" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Team Tickets</span>
+        </button>
+        <button class="tab" data-tab="teams" type="button" title="Teams" aria-label="Teams">
+          <i data-lucide="users" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Team Details</span>
+        </button>
+        <button class="tab" data-tab="infocomm" type="button" title="Infocomm" aria-label="Infocomm">
+          <i data-lucide="calendar" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">InfoComm Schedule</span>
+        </button>
+      </nav>
+    </aside>
 
-      <div id="advancedFilters" class="filters-advanced" data-collapsible-panel>
+    <!-- Main Container -->
+    <div class="main-container shell-layout">
+      <!-- Top Brand Header Bar -->
+      <header class="topbar panel">
+        <div class="topbar-left">
+          <div class="logo-card">
+            <div class="brand-dot" aria-hidden="true"></div>
+          </div>
+          <div class="brand-text">
+            <h1>Central Dashboard of Reflect Analytics</h1>
+            <p>Dashboard for Reflect Tickects, Team Details and InfoComm Schedule</p>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button id="themeToggleBtn" class="theme-toggle-btn" type="button" aria-label="Toggle theme">
+            <i data-lucide="sun" class="sun-icon" aria-hidden="true"></i>
+            <i data-lucide="moon" class="moon-icon" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Unified Control Toolbar -->
+      <section class="control-toolbar panel" aria-label="Controls and status">
+        <div class="toolbar-left">
+          <div class="search-wrap">
+            <i data-lucide="search" class="search-icon" aria-hidden="true"></i>
+            <input id="searchInput" placeholder="Search ticket key or summary..." />
+          </div>
+          <button id="toggleAdvancedFiltersBtn" class="ghost-btn filters-toggle-btn" type="button" aria-expanded="true"
+            aria-controls="advancedFilters">
+            <i data-lucide="sliders-horizontal" class="btn-icon-left" aria-hidden="true"></i>
+            <span>Advanced filters</span>
+          </button>
+        </div>
+        <div class="toolbar-right">
+          <span id="syncChip" class="sync-chip">Sync status: loading...</span>
+          <button id="manualSyncBtn" class="action-btn sync-btn" type="button">
+            <i data-lucide="refresh-cw" class="btn-icon-left" aria-hidden="true"></i>
+            <span>Sync now</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Collapsible Advanced Filters Drawer -->
+      <section id="advancedFilters" class="filters-advanced panel" data-collapsible-panel>
         <div class="field">
           <label for="teamSelect">Team</label>
           <select id="teamSelect" multiple size="5" aria-label="Team filter">
@@ -63,65 +123,20 @@
           <select id="assigneeSelect" multiple size="5" aria-label="Assignee filter">
             <option value="">All</option>
           </select>
-          <div class="assignee-roster-actions">
-            <button id="assigneeSelectAllBtn" class="ghost-btn" type="button">Select Team Roster</button>
-            <button id="assigneeClearAllBtn" class="ghost-btn" type="button">Clear Team Roster</button>
-          </div>
           <p id="assigneeSummary" class="field-summary">All assignees</p>
         </div>
 
-        <div class="field">
-          <label for="boardInput">Board ID</label>
-          <input id="boardInput" placeholder="1863" />
+        <div class="field" style="display: none;">
+          <input id="boardInput" type="hidden" />
         </div>
 
         <div class="filters-actions">
-          <button id="applyFiltersBtn" class="action-btn" type="button">Apply</button>
-          <button id="resetFiltersBtn" class="ghost-btn" type="button">Reset</button>
+          <button id="resetFiltersBtn" class="reset-filters-btn" type="button">Reset</button>
+          <button id="applyFiltersBtn" class="apply-filters-btn" type="button">Apply</button>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <div class="shell-layout">
-      <aside class="sidebar panel" aria-label="Dashboard views">
-        <button
-          id="toggleSidebarBtn"
-          class="ghost-btn sidebar-toggle"
-          type="button"
-          aria-expanded="true"
-          aria-controls="dashboardTabs"
-        >
-          <span class="sidebar-toggle-icon" aria-hidden="true">&#9776;</span>
-          <span class="sidebar-toggle-label">Collapse sidebar</span>
-        </button>
-        <nav id="dashboardTabs" class="tabs" aria-label="Dashboard views">
-          <button class="tab is-active" data-tab="overview" type="button" title="Overview" aria-label="Overview">
-            <span class="tab-icon" aria-hidden="true">&#9679;</span>
-            <span class="tab-label">Overview</span>
-          </button>
-          <button class="tab" data-tab="network" type="button" title="Network" aria-label="Network">
-            <span class="tab-icon" aria-hidden="true">&#9638;</span>
-            <span class="tab-label">Network</span>
-          </button>
-          <button class="tab" data-tab="metrics" type="button" title="Metrics" aria-label="Metrics">
-            <span class="tab-icon" aria-hidden="true">&#9650;</span>
-            <span class="tab-label">Metrics</span>
-          </button>
-          <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
-            <span class="tab-icon" aria-hidden="true">&#9635;</span>
-            <span class="tab-label">Tickets</span>
-          </button>
-          <button class="tab" data-tab="teams" type="button" title="Teams" aria-label="Teams">
-            <span class="tab-icon" aria-hidden="true">&#9783;</span>
-            <span class="tab-label">Teams</span>
-          </button>
-          <button class="tab" data-tab="infocomm" type="button" title="Infocomm" aria-label="Infocomm">
-            <span class="tab-icon" aria-hidden="true">&#9776;</span>
-            <span class="tab-label">Infocomm</span>
-          </button>
-        </nav>
-      </aside>
-
+      <!-- Main View Area -->
       <main class="content-shell">
         <section id="overview" class="view is-active">
           <div class="kpi-grid">
@@ -184,7 +199,7 @@
               <canvas id="storyPointsChart" height="180"></canvas>
             </article>
             <article class="panel">
-              <h3>Top assignee workload</h3>
+              <h3>Assignee workload</h3>
               <canvas id="assigneeChart" height="180"></canvas>
             </article>
           </div>
@@ -230,7 +245,8 @@
                 <button class="infocomm-btn" data-show="global" type="button">InfoComm Global</button>
               </div>
               <div class="infocomm-website-link">
-                <a id="infocommWebsiteUrl" href="https://www.infocomm-india.com" target="_blank" class="action-btn-link">Visit Official Website</a>
+                <a id="infocommWebsiteUrl" href="https://www.infocomm-india.com" target="_blank"
+                  class="action-btn-link">Visit Official Website</a>
               </div>
             </article>
             <article class="panel infocomm-schedule-panel">
@@ -245,4 +261,5 @@
     </div>
   </div>
 </body>
+
 </html>
