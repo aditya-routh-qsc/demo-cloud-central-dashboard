@@ -61,11 +61,6 @@ class ScraperFallbackTests(unittest.IsolatedAsyncioTestCase):
         previous_data = [
             {
                 "date": "Mon, June 15",
-                "title": "Previous Session",
-                "duration": "10:00 - 11:00",
-                "location": "Room 1",
-                "link": "https://example.com/session1",
-                "description": "Previous description"
             }
         ]
         save_to_csv(previous_data, fallback_file)

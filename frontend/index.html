@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="/app/style.css?v=20260609-1" />
   <link rel="icon" type="image/png" href="/assets/images/qsys-logo.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.0/dist/cytoscape.min.js" defer></script>
   <script src="https://unpkg.com/lucide@0.400.0" defer></script>
   <script src="/app/app.js?v=20260609-1" defer></script>
 </head>
@@ -27,16 +26,11 @@
       <button id="toggleSidebarBtn" class="ghost-btn sidebar-toggle" type="button" aria-expanded="true"
         aria-controls="dashboardTabs">
         <i data-lucide="menu" class="sidebar-toggle-icon" aria-hidden="true"></i>
-        <span class="sidebar-toggle-label">Collapse sidebar</span>
       </button>
       <nav id="dashboardTabs" class="tabs" aria-label="Dashboard views">
         <button class="tab is-active" data-tab="overview" type="button" title="Overview" aria-label="Overview">
           <i data-lucide="home" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Overview</span>
-        </button>
-        <button class="tab" data-tab="network" type="button" title="Network" aria-label="Network">
-          <i data-lucide="network" class="tab-icon" aria-hidden="true"></i>
-          <span class="tab-label">Dependencies Network</span>
         </button>
         <button class="tab" data-tab="metrics" type="button" title="Metrics" aria-label="Metrics">
           <i data-lucide="bar-chart-3" class="tab-icon" aria-hidden="true"></i>
@@ -175,23 +169,6 @@
           </article>
         </section>
 
-        <section id="network" class="view">
-          <div class="split-grid">
-            <article class="panel graph-panel">
-              <h3>Dependency graph</h3>
-              <div id="networkSkeleton" class="panel-skeleton"></div>
-              <div id="networkEmptyState" class="network-empty muted"></div>
-              <div id="networkGraph"></div>
-              <div id="networkMobileSummary" class="network-mobile-summary"></div>
-              <div id="networkLegend" class="network-legend"></div>
-            </article>
-            <article class="panel details-panel">
-              <h3>Node details</h3>
-              <div id="nodeDetails" class="muted">Select a node to inspect context and jump to Jira.</div>
-            </article>
-          </div>
-        </section>
-
         <section id="metrics" class="view">
           <div class="split-grid">
             <article class="panel">
@@ -216,21 +193,16 @@
           <div class="split-grid">
             <article class="panel">
               <h3>Teams Workspace</h3>
+              <div class="search-wrap team-workspace-search-wrap">
+                <i data-lucide="search" class="search-icon" aria-hidden="true"></i>
+                <input id="teamWorkspaceSearchInput" placeholder="Search teams..." aria-label="Search teams" />
+              </div>
               <div id="teamsGrid" class="teams-grid"></div>
             </article>
             <article class="panel">
               <h3 id="teamDetailTitle">Team Details</h3>
-              <div id="teamDetailTabs" class="team-detail-tabs">
-                <button class="team-tab is-active" data-team-tab="assigned" type="button">Tickets Assigned</button>
-                <button class="team-tab" data-team-tab="work_done" type="button">Work Done</button>
-                <button class="team-tab" data-team-tab="reported" type="button">Tickets Reported</button>
-                <button class="team-tab" data-team-tab="timeline" type="button">Timeline</button>
-              </div>
               <div id="teamDetailSkeleton" class="team-detail-skeleton"></div>
-              <div id="teamAssignedPanel" class="team-panel is-active"></div>
-              <div id="teamWorkDonePanel" class="team-panel"></div>
-              <div id="teamReportedPanel" class="team-panel"></div>
-              <div id="teamTimelinePanel" class="team-panel"></div>
+              <div id="teamDetailContent" class="team-detail-content"></div>
             </article>
           </div>
         </section>

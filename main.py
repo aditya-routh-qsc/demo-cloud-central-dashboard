@@ -15,7 +15,6 @@ from fastapi.staticfiles import StaticFiles
 
 from config_utils import get_sync_interval_minutes, get_sync_cooldown_seconds
 from database import (
-    build_network_graph,
     calculate_metrics,
     init_db,
     load_filter_options,
@@ -244,7 +243,7 @@ def _load_ticket_rows(
     excluded_assignees: list[str],
     search: str | None,
     board_id: str | None,
-    limit: int,
+    limit: int | None,
     offset: int,
 ) -> tuple[int, list[dict[str, Any]]]:
     return load_ticket_rows(
@@ -270,26 +269,6 @@ def _calculate_metrics(
     board_id: str | None,
 ) -> dict[str, Any]:
     return calculate_metrics(
-        statuses=statuses,
-        assignees=assignees,
-        teams=teams,
-        excluded_statuses=excluded_statuses,
-        excluded_assignees=excluded_assignees,
-        search=search,
-        board_id=board_id,
-    )
-
-
-def _build_network_graph(
-    statuses: list[str],
-    assignees: list[str],
-    teams: list[str],
-    excluded_statuses: list[str],
-    excluded_assignees: list[str],
-    search: str | None,
-    board_id: str | None,
-) -> dict[str, Any]:
-    return build_network_graph(
         statuses=statuses,
         assignees=assignees,
         teams=teams,
@@ -461,13 +440,13 @@ def get_tickets(
     assignee_exclude: list[str] | None = Query(default=None),
     search: str | None = Query(default=None),
     board_id: str | None = Query(default=None),
-    limit: int = Query(default=1000, ge=1, le=1000),
+    limit: int | None = Query(default=None, ge=1),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
     # Keep CSV fallback for status for URL backward-compat; assignee names may contain commas.
     search = _unwrap_query(search, None)
     board_id = _unwrap_query(board_id, None)
-    limit = _unwrap_query(limit, 1000)
+    limit = _unwrap_query(limit, None)
     offset = _unwrap_query(offset, 0)
     status_values = _parse_multi_query_values(status, allow_csv=True)
     assignee_values = _parse_multi_query_values(assignee, allow_csv=False)
@@ -528,29 +507,6 @@ def get_metrics(
     search = _unwrap_query(search, None)
     board_id = _unwrap_query(board_id, None)
     return _calculate_metrics(
-        statuses=_parse_multi_query_values(status, allow_csv=True),
-        assignees=_parse_multi_query_values(assignee, allow_csv=False),
-        teams=_parse_multi_query_values(team, allow_csv=False),
-        excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
-        excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
-        search=search,
-        board_id=board_id,
-    )
-
-
-@app.get("/api/network")
-def get_network(
-    status: list[str] | None = Query(default=None),
-    assignee: list[str] | None = Query(default=None),
-    team: list[str] | None = Query(default=None),
-    status_exclude: list[str] | None = Query(default=None),
-    assignee_exclude: list[str] | None = Query(default=None),
-    search: str | None = Query(default=None),
-    board_id: str | None = Query(default=None),
-) -> dict[str, Any]:
-    search = _unwrap_query(search, None)
-    board_id = _unwrap_query(board_id, None)
-    return _build_network_graph(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
         teams=_parse_multi_query_values(team, allow_csv=False),
@@ -624,7 +580,17 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
             data = loop.run_until_complete(scrape_schedule(url, fallback_path=file_path))
             loop.close()
             if data:
-                save_to_json(data, file_path)
+                # Persist normalized dates-only payload.
+                normalized_dates = []
+                seen_dates: set[str] = set()
+                for item in data:
+                    date_value = str((item or {}).get("date") or "").strip() if isinstance(item, dict) else ""
+                    if not date_value or date_value in seen_dates:
+                        continue
+                    seen_dates.add(date_value)
+                    normalized_dates.append({"date": date_value})
+
+                save_to_json(normalized_dates, file_path)
             else:
                 raise Exception("Scraper returned empty data")
         except Exception as e:
@@ -634,4 +600,19 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
                 raise HTTPException(status_code=500, detail=f"Scraping failed: {e}")
                 
     with open(file_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        payload = json.load(f)
+
+    # Always return dates-only response shape even if legacy cache exists.
+    dates_only: list[dict[str, str]] = []
+    seen_dates: set[str] = set()
+    for item in payload if isinstance(payload, list) else []:
+        if isinstance(item, dict):
+            date_value = str(item.get("date") or "").strip()
+        else:
+            date_value = str(item or "").strip()
+        if not date_value or date_value in seen_dates:
+            continue
+        seen_dates.add(date_value)
+        dates_only.append({"date": date_value})
+
+    return dates_only

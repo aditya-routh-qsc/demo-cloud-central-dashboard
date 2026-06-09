@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import csv
 import json
+import re
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlparse
 
@@ -24,6 +27,225 @@ TRACKED_HISTORY_FIELDS = [
 
 DONE_STATUS_KEYS = {"done", "closed", "resolved"}
 IN_PROGRESS_STATUS_KEYS = {"in progress", "in-progress", "in_review", "in review", "testing"}
+TEAM_DETAILS_CSV_PATH = Path(__file__).resolve().parent / "inputs" / "team_details.csv"
+
+
+def _normalize_team_text(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _team_id_from_name(team_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(team_name or "").strip().lower()).strip("-")
+    return slug or "unnamed-team"
+
+
+def _load_team_roster_from_csv() -> list[dict[str, Any]]:
+    """Load team roster from inputs/team_details.csv.
+
+    CSV conventions handled:
+    - Empty rows may separate team blocks.
+    - Team header row may be a single populated cell (first column only).
+    - Repeated Name/Role/Skillset/Location/Contractor/Notes header rows are ignored.
+    """
+    if not TEAM_DETAILS_CSV_PATH.exists():
+        return []
+
+    teams: list[dict[str, Any]] = []
+    current_team: dict[str, Any] | None = None
+    was_last_row_empty = True
+
+    with TEAM_DETAILS_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        for raw_row in reader:
+            row = [str(cell or "").strip() for cell in raw_row]
+            while len(row) < 6:
+                row.append("")
+            if not any(row):
+                was_last_row_empty = True
+                continue
+
+            first = row[0]
+            has_other_cells = any(cell for cell in row[1:])
+
+            if first.casefold() == "name":
+                was_last_row_empty = False
+                continue
+
+            if first and not has_other_cells and was_last_row_empty:
+                current_team = {
+                    "team_id": _team_id_from_name(first),
+                    "team_name": first,
+                    "description": "",
+                    "members": [],
+                }
+                teams.append(current_team)
+                was_last_row_empty = False
+                continue
+
+            was_last_row_empty = False
+            if current_team is None:
+                continue
+
+            member_name = first
+            if not member_name:
+                continue
+
+            current_team["members"].append(
+                {
+                    "display_name": member_name,
+                    "role": row[1],
+                    "skillset": row[2],
+                    "location": row[3],
+                    "contractor": row[4],
+                    "notes": row[5],
+                }
+            )
+
+    # De-duplicate teams by normalized name while preserving original order.
+    deduped: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for team in teams:
+        normalized_name = _normalize_team_text(team.get("team_name", ""))
+        if not normalized_name or normalized_name in seen_names:
+            continue
+        seen_names.add(normalized_name)
+        deduped.append(team)
+
+    return deduped
+
+
+KNOWN_ASSIGNEE_MAPPING = {
+    "anna, sureshkumar": "sureshkumar anna",
+    "ashok, ananya": "ananya a",
+    "bandi, vishnu t": "vishnu bandi",
+    "chauhan, akash": "akash chauhan",
+    "dang, minh t": "minh dang",
+    "derangula, sivaprasad": "sivaprasad derangula",
+    "hessler, christian j": "christian hessler",
+    "jain, ruchika": "ruchikajain",
+    "johnson, dane a": "dane johnson*",
+    "karmalkar, shubham s": "shubam karmalkar",
+    "kumar, shashi": "shashi kumar",
+    "lizunov, roman lizunov -ctr": "roman luzinov",
+    "madhavi, giriboina": "madhavi g",
+    "mazurenko, vitalii mazurenko -ctr": "vitalii mazurenko",
+    "mohanty, abinash": "abinash",
+    "mukane, fawaz a": "fawaz mukane",
+    "rakshit, saswata": "saswata r",
+    "singh, nishant -ctr": "nishant singh",
+    "singh, pawan k": "pawan singh",
+    "sinha, ashutosh kumar": "ashutosh sinha",
+    "surbhat, abhishek": "abhishek surbhat",
+    "walekar, shrutika": "shrutika walekar",
+}
+
+
+def clean_for_fallback(name: str) -> str:
+    name = re.sub(r"\(.*?\)", "", name)
+    name = re.sub(r"-CTR", "", name, flags=re.I)
+    name = name.replace("*", "")
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def match_assignee_to_member(db_assignee: str) -> str | None:
+    db_assignee_clean = str(db_assignee or "").strip().lower()
+
+    if db_assignee_clean in KNOWN_ASSIGNEE_MAPPING:
+        return KNOWN_ASSIGNEE_MAPPING[db_assignee_clean]
+
+    all_members = []
+    for team in load_team_roster():
+        for member in (team.get("members") or []):
+            csv_n = str(member.get("display_name") or "").strip()
+            if csv_n:
+                all_members.append(csv_n)
+
+    for csv_n in all_members:
+        if csv_n.lower() == db_assignee_clean:
+            return csv_n
+
+    parts = [p.strip() for p in db_assignee_clean.split(",")]
+    if len(parts) == 2:
+        reversed_name = f"{parts[1]} {parts[0]}"
+        for csv_n in all_members:
+            if csv_n.lower() == reversed_name:
+                return csv_n
+
+    cleaned_db = clean_for_fallback(db_assignee_clean)
+    cleaned_db_reversed = ""
+    if len(parts) == 2:
+        cleaned_db_reversed = clean_for_fallback(f"{parts[1]} {parts[0]}")
+    for csv_n in all_members:
+        cleaned_csv = clean_for_fallback(csv_n)
+        if cleaned_csv == cleaned_db or (cleaned_db_reversed and cleaned_csv == cleaned_db_reversed):
+            return csv_n
+
+    db_tokens = [w for w in re.sub(r"[^a-z]", " ", db_assignee_clean).split() if w not in ("ctr", "ds")]
+    for csv_n in all_members:
+        csv_tokens = [w for w in re.sub(r"[^a-z]", " ", csv_n.lower()).split() if w not in ("ctr", "ds")]
+        if not db_tokens or not csv_tokens:
+            continue
+        long_shared = [w for w in db_tokens if w in csv_tokens and len(w) >= 4]
+        if long_shared:
+            return csv_n
+
+    return None
+
+
+def _member_names_for_team_values(team_values: list[str]) -> list[str]:
+    roster = load_team_roster(team_filters=team_values)
+    matching_csv_names = {
+        str(member.get("display_name") or "").strip().casefold()
+        for team in roster
+        for member in (team.get("members") or [])
+        if str(member.get("display_name") or "").strip()
+    }
+
+    with get_connection() as conn:
+        try:
+            rows = conn.execute("SELECT DISTINCT assignee FROM tickets_current WHERE assignee IS NOT NULL AND assignee != ''").fetchall()
+            db_assignees = [row["assignee"] for row in rows]
+        except sqlite3.OperationalError:
+            db_assignees = []
+
+    matched_db_names: set[str] = set()
+    for db_assignee in db_assignees:
+        matched_csv = match_assignee_to_member(db_assignee)
+        if matched_csv and matched_csv.casefold() in matching_csv_names:
+            matched_db_names.add(db_assignee.strip().lower())
+
+    for csv_n in matching_csv_names:
+        matched_db_names.add(csv_n)
+
+    return sorted(list(matched_db_names))
+
+
+def _member_to_team_lookup() -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for team in load_team_roster():
+        team_id = str(team.get("team_id") or "").strip()
+        team_name = str(team.get("team_name") or "").strip()
+        for member in (team.get("members") or []):
+            csv_name = str(member.get("display_name") or "").strip()
+            if not csv_name:
+                continue
+            lookup[csv_name.casefold()] = {"team_id": team_id, "team_name": team_name}
+
+    with get_connection() as conn:
+        try:
+            rows = conn.execute("SELECT DISTINCT assignee FROM tickets_current WHERE assignee IS NOT NULL AND assignee != ''").fetchall()
+            db_assignees = [row["assignee"] for row in rows]
+        except sqlite3.OperationalError:
+            db_assignees = []
+
+    for db_assignee in db_assignees:
+        matched_csv = match_assignee_to_member(db_assignee)
+        if matched_csv:
+            csv_meta = lookup.get(matched_csv.casefold())
+            if csv_meta:
+                lookup[db_assignee.strip().casefold()] = csv_meta
+
+    return lookup
 
 
 @contextmanager
@@ -35,6 +257,15 @@ def get_connection() -> Iterator[sqlite3.Connection]:
         yield conn
     finally:
         conn.close()
+
+
+def _ensure_column_exists(conn: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
+    """Add a missing sqlite column for backward-compatible schema upgrades."""
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    existing_columns = {str(row[1]) for row in rows}
+    if column_name in existing_columns:
+        return
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}")
 
 
 def init_db() -> None:
@@ -119,43 +350,6 @@ def init_db() -> None:
                 state_value TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS teams (
-                team_id TEXT PRIMARY KEY,
-                display_name TEXT,
-                description TEXT,
-                cloud_id TEXT,
-                organization_id TEXT,
-                state TEXT,
-                team_type TEXT,
-                is_verified INTEGER,
-                profile_url TEXT,
-                member_count INTEGER,
-                includes_you INTEGER,
-                team_json TEXT NOT NULL DEFAULT '{}',
-                updated_at TEXT NOT NULL DEFAULT ''
-            );
-
-            CREATE TABLE IF NOT EXISTS team_members (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                team_id TEXT,
-                account_id TEXT,
-                display_name TEXT,
-                email TEXT,
-                canonical_account_id TEXT,
-                account_status TEXT,
-                nickname TEXT,
-                picture TEXT,
-                zoneinfo TEXT,
-                locale TEXT,
-                org_id TEXT,
-                profile_url TEXT,
-                member_role TEXT,
-                member_state TEXT,
-                member_json TEXT NOT NULL DEFAULT '{}',
-                updated_at TEXT NOT NULL DEFAULT '',
-                UNIQUE(team_id, account_id)
-            );
-
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets_current(status);
             CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets_current(assignee);
             CREATE INDEX IF NOT EXISTS idx_tickets_updated ON tickets_current(updated);
@@ -163,10 +357,6 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_deps_target ON ticket_dependencies_current(target_ticket_key);
             CREATE INDEX IF NOT EXISTS idx_history_ticket ON ticket_history_log(ticket_key, changed_at DESC);
             CREATE INDEX IF NOT EXISTS idx_runs_started ON sync_runs(started_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_team_members_team_id ON team_members(team_id);
-            CREATE INDEX IF NOT EXISTS idx_team_members_display_name ON team_members(display_name);
-            CREATE INDEX IF NOT EXISTS idx_team_members_account_id ON team_members(account_id);
-            CREATE INDEX IF NOT EXISTS idx_teams_display_name ON teams(display_name);
             """
         )
         conn.commit()
@@ -508,20 +698,14 @@ def _append_team_filter_exists(
     if not team_values:
         return
 
-    placeholders = ", ".join("?" for _ in team_values)
-    where_parts.append(
-        "(" 
-        "EXISTS ("
-        "SELECT 1 "
-        "FROM team_members tm "
-        "JOIN teams t ON t.team_id = tm.team_id "
-        f"WHERE LOWER(TRIM(tm.display_name)) = LOWER(TRIM({assignee_sql})) "
-        f"AND (tm.team_id IN ({placeholders}) OR t.display_name IN ({placeholders}))"
-        ")"
-        ")"
-    )
-    params.extend(team_values)
-    params.extend(team_values)
+    member_names = _member_names_for_team_values(team_values)
+    if not member_names:
+        where_parts.append("1 = 0")
+        return
+
+    placeholders = ", ".join("?" for _ in member_names)
+    where_parts.append(f"LOWER(TRIM({assignee_sql})) IN ({placeholders})")
+    params.extend(member_names)
 
 
 def _status_bucket(status: str) -> str:
@@ -611,18 +795,6 @@ def load_filter_options(
             query_params,
         ).fetchall()
 
-        team_rows = conn.execute(
-            f"""
-            SELECT DISTINCT t.team_id, t.display_name
-            FROM teams t
-            JOIN team_members tm ON tm.team_id = t.team_id
-            JOIN tickets_current tc ON LOWER(TRIM(tc.assignee)) = LOWER(TRIM(tm.display_name))
-            {scoped_where_clause}
-            ORDER BY t.display_name COLLATE NOCASE ASC
-            """,
-            query_params,
-        ).fetchall()
-
     statuses = [str(row["status"]).strip() for row in status_rows if str(row["status"] or "").strip()]
     assignees = [
         str(row["assignee"]).strip()
@@ -630,10 +802,26 @@ def load_filter_options(
         if str(row["assignee"] or "").strip()
     ]
 
+    assignee_keys = set()
+    for val in assignees:
+        matched_csv = match_assignee_to_member(val)
+        if matched_csv:
+            assignee_keys.add(matched_csv.casefold())
+        else:
+            assignee_keys.add(val.casefold())
+
+    team_names: list[str] = []
+    for team in load_team_roster(team_filters=teams if teams else None):
+        members = team.get("members") or []
+        if any(str(member.get("display_name") or "").strip().casefold() in assignee_keys for member in members):
+            team_name = str(team.get("team_name") or "").strip()
+            if team_name:
+                team_names.append(team_name)
+
     return {
         "statuses": statuses,
         "assignees": assignees,
-        "teams": [str(row["display_name"] or "").strip() for row in team_rows if str(row["display_name"] or "").strip()],
+        "teams": sorted(set(team_names), key=str.casefold),
     }
 
 
@@ -645,7 +833,7 @@ def load_ticket_rows(
     teams: list[str],
     search: str | None,
     board_id: str | None,
-    limit: int,
+    limit: int | None,
     offset: int,
 ) -> tuple[int, list[dict[str, Any]]]:
     """Return filtered ticket rows and total count."""
@@ -671,23 +859,33 @@ def load_ticket_rows(
         total = int(conn.execute(count_query, params_with_teams).fetchone()["count"])
 
         query = f"""
-            SELECT tc.*, mt.team_id, mt.team_name
+            SELECT tc.*
             FROM tickets_current tc
-            LEFT JOIN (
-                SELECT LOWER(TRIM(tm.display_name)) AS member_name,
-                       MIN(t.team_id) AS team_id,
-                       MIN(t.display_name) AS team_name
-                FROM team_members tm
-                JOIN teams t ON t.team_id = tm.team_id
-                GROUP BY LOWER(TRIM(tm.display_name))
-            ) mt ON mt.member_name = LOWER(TRIM(tc.assignee))
             {scoped_where_clause}
             ORDER BY tc.updated DESC, tc.ticket_key ASC
-            LIMIT ? OFFSET ?
         """
-        rows = conn.execute(query, [*params_with_teams, limit, offset]).fetchall()
+        query_params = [*params_with_teams]
+        if limit is None:
+            if offset > 0:
+                query = f"{query}\nLIMIT -1 OFFSET ?"
+                query_params.append(offset)
+        else:
+            query = f"{query}\nLIMIT ? OFFSET ?"
+            query_params.extend([limit, offset])
 
-    items = [_ticket_from_row(row) for row in rows]
+        rows = conn.execute(query, query_params).fetchall()
+
+    member_lookup = _member_to_team_lookup()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        item = _ticket_from_row(row)
+        assignee_key = str(item.get("assignee") or "").strip().casefold()
+        team_meta = member_lookup.get(assignee_key)
+        if team_meta:
+            item["team_id"] = team_meta.get("team_id")
+            item["team_name"] = team_meta.get("team_name")
+        items.append(item)
+
     return total, items
 
 
@@ -720,25 +918,25 @@ def load_ticket_team_groups(
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT DISTINCT
-                tc.*,
-                t.team_id,
-                t.display_name AS team_name
+            SELECT DISTINCT tc.*
             FROM tickets_current tc
-            JOIN team_members tm ON LOWER(TRIM(tm.display_name)) = LOWER(TRIM(tc.assignee))
-            JOIN teams t ON t.team_id = tm.team_id
             {scoped_where_clause}
-            ORDER BY t.display_name COLLATE NOCASE ASC, tc.assignee COLLATE NOCASE ASC, tc.updated DESC
+            ORDER BY tc.assignee COLLATE NOCASE ASC, tc.updated DESC
             """,
             params_with_teams,
         ).fetchall()
 
+    member_lookup = _member_to_team_lookup()
     grouped: dict[str, dict[str, Any]] = {}
     for row in rows:
-        team_id = str(row["team_id"] or "").strip()
-        team_name = str(row["team_name"] or "").strip() or "Unmapped Team"
-        assignee = str(row["assignee"] or "").strip() or "Unassigned"
         ticket = _ticket_from_row(row)
+        assignee = str(ticket.get("assignee") or "").strip() or "Unassigned"
+        team_meta = member_lookup.get(assignee.casefold())
+        if not team_meta:
+            continue
+
+        team_id = str(team_meta.get("team_id") or "").strip()
+        team_name = str(team_meta.get("team_name") or "").strip() or "Unmapped Team"
         team_group = grouped.setdefault(
             team_id,
             {
@@ -790,63 +988,19 @@ def load_ticket_team_groups(
 
 
 def load_team_roster(team_filters: list[str] | None = None) -> list[dict[str, Any]]:
-    """Return all teams with member roster and external profile URLs."""
+    """Return all teams from CSV source-of-truth with member roster details."""
     team_filters = team_filters or []
-    where_clause = ""
-    params: list[Any] = []
+    teams = _load_team_roster_from_csv()
+
     if team_filters:
-        placeholders = ", ".join("?" for _ in team_filters)
-        where_clause = f"WHERE (t.team_id IN ({placeholders}) OR t.display_name IN ({placeholders}))"
-        params.extend(team_filters)
-        params.extend(team_filters)
+        normalized_filters = {_normalize_team_text(value) for value in team_filters if str(value or "").strip()}
+        teams = [
+            team
+            for team in teams
+            if _normalize_team_text(team.get("team_id", "")) in normalized_filters
+            or _normalize_team_text(team.get("team_name", "")) in normalized_filters
+        ]
 
-    with get_connection() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT
-                t.team_id,
-                t.display_name AS team_name,
-                t.description,
-                tm.account_id,
-                tm.display_name AS member_name,
-                tm.email,
-                tm.profile_url
-            FROM teams t
-            LEFT JOIN team_members tm ON tm.team_id = t.team_id
-            {where_clause}
-            ORDER BY t.display_name COLLATE NOCASE ASC, tm.display_name COLLATE NOCASE ASC
-            """,
-            params,
-        ).fetchall()
-
-    team_map: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        team_id = str(row["team_id"] or "").strip()
-        if not team_id:
-            continue
-        team_entry = team_map.setdefault(
-            team_id,
-            {
-                "team_id": team_id,
-                "team_name": str(row["team_name"] or "").strip() or "Unnamed Team",
-                "description": str(row["description"] or "").strip(),
-                "members": [],
-            },
-        )
-        account_id = str(row["account_id"] or "").strip()
-        member_name = str(row["member_name"] or "").strip()
-        if not account_id and not member_name:
-            continue
-        team_entry["members"].append(
-            {
-                "account_id": account_id,
-                "display_name": member_name,
-                "email": str(row["email"] or "").strip(),
-                "profile_url": str(row["profile_url"] or "").strip(),
-            }
-        )
-
-    teams = list(team_map.values())
     teams.sort(key=lambda item: str(item["team_name"]).casefold())
     return teams
 
@@ -860,54 +1014,76 @@ def load_team_workspace_overview(
     search: str | None,
     board_id: str | None,
 ) -> dict[str, Any]:
-    """Return team cards with assigned/reported totals for the Teams workspace."""
+    """Return team cards driven by CSV source-of-truth roster."""
     roster = load_team_roster(team_filters=teams)
-    grouped = load_ticket_team_groups(
+
+    # To get metric numbers for all teams under current filters, let's load all tickets matching non-team filters
+    total, all_tickets = load_ticket_rows(
         statuses=statuses,
         assignees=assignees,
         excluded_statuses=excluded_statuses,
         excluded_assignees=excluded_assignees,
-        teams=teams,
+        teams=[], # do not restrict to teams here so we can see other teams' ticket metrics
         search=search,
         board_id=board_id,
+        limit=99999,
+        offset=0,
     )
-    grouped_by_team = {str(item.get("team_id") or ""): item for item in grouped}
 
-    where_clause, params = _build_ticket_filter_clause(
-        statuses=statuses,
-        assignees=assignees,
-        excluded_statuses=excluded_statuses,
-        excluded_assignees=excluded_assignees,
-        search=search,
-        board_id=board_id,
-        table_alias="tc",
-    )
-    where_parts: list[str] = []
-    if where_clause:
-        where_parts.append(where_clause.replace("WHERE", "", 1).strip())
-    params_with_teams = list(params)
-    _append_team_filter_exists(where_parts, params_with_teams, "tc.assignee", teams)
-    scoped_where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    team_metrics = {}
+    for team in roster:
+        t_id = team.get("team_id")
+        team_metrics[t_id] = {
+            "total_assigned": 0,
+            "in_progress": 0,
+            "blocked": 0,
+            "reported": 0,
+        }
 
+    for ticket in all_tickets:
+        ticket_team_id = ticket.get("team_id")
+        if ticket_team_id in team_metrics:
+            metrics = team_metrics[ticket_team_id]
+            metrics["total_assigned"] += 1
+            if _status_bucket(str(ticket.get("status") or "")) == "in_progress":
+                metrics["in_progress"] += 1
+            dependencies = ticket.get("dependencies") or {}
+            blockers = dependencies.get("blockers") if isinstance(dependencies, dict) else []
+            if isinstance(blockers, list) and blockers:
+                metrics["blocked"] += 1
+
+    # Map database reporters to teams dynamically
     with get_connection() as conn:
-        reported_rows = conn.execute(
-            f"""
-            SELECT t.team_id, COUNT(DISTINCT tc.ticket_key) AS reported_count
-            FROM teams t
-            JOIN team_members tm ON tm.team_id = t.team_id
-            LEFT JOIN tickets_current tc ON LOWER(TRIM(tc.reporter)) = LOWER(TRIM(tm.display_name))
-            {scoped_where_clause}
-            GROUP BY t.team_id
-            """,
-            params_with_teams,
-        ).fetchall()
+        try:
+            all_reporters = conn.execute("SELECT DISTINCT reporter FROM tickets_current WHERE reporter IS NOT NULL AND reporter != ''").fetchall()
+            reporter_names = [row["reporter"] for row in all_reporters]
+        except sqlite3.OperationalError:
+            reporter_names = []
 
-    reported_by_team = {str(row["team_id"]): int(row["reported_count"] or 0) for row in reported_rows}
+    reporter_to_team_id = {}
+    for rep in reporter_names:
+        matched_csv = match_assignee_to_member(rep)
+        if matched_csv:
+            for team in roster:
+                if any(str(m.get("display_name") or "").strip().casefold() == matched_csv.casefold() for m in team.get("members", [])):
+                    reporter_to_team_id[rep.strip().casefold()] = team.get("team_id")
+
+    for ticket in all_tickets:
+        reporter_raw = str(ticket.get("reporter") or "").strip().casefold()
+        if reporter_raw in reporter_to_team_id:
+            rep_team_id = reporter_to_team_id[reporter_raw]
+            if rep_team_id in team_metrics:
+                team_metrics[rep_team_id]["reported"] += 1
 
     cards: list[dict[str, Any]] = []
     for team in roster:
         team_id = str(team.get("team_id") or "")
-        grouped_stats = grouped_by_team.get(team_id, {})
+        metrics = team_metrics.get(team_id, {
+            "total_assigned": 0,
+            "in_progress": 0,
+            "blocked": 0,
+            "reported": 0,
+        })
         cards.append(
             {
                 "team_id": team_id,
@@ -915,12 +1091,7 @@ def load_team_workspace_overview(
                 "description": team.get("description", ""),
                 "member_count": len(team.get("members", [])),
                 "members": team.get("members", []),
-                "metrics": {
-                    "total_assigned": int(grouped_stats.get("total_tickets") or 0),
-                    "in_progress": int(grouped_stats.get("in_progress_tickets") or 0),
-                    "blocked": int(grouped_stats.get("blocked_tickets") or 0),
-                    "reported": int(reported_by_team.get(team_id, 0)),
-                },
+                "metrics": metrics,
             }
         )
 
@@ -949,31 +1120,39 @@ def load_team_detail_tabs(
     search: str | None,
     board_id: str | None,
 ) -> dict[str, Any]:
-    """Return assigned/work-done/reported/timeline datasets for a selected team."""
-    team_filters = [team_id]
-    grouped = load_ticket_team_groups(
+    """Return team detail data sourced from CSV roster."""
+    team_roster = load_team_roster(team_filters=[team_id])
+    team_meta = team_roster[0] if team_roster else {}
+
+    total_assigned, assigned_items = load_ticket_rows(
         statuses=statuses,
         assignees=assignees,
         excluded_statuses=excluded_statuses,
         excluded_assignees=excluded_assignees,
-        teams=team_filters,
+        teams=[team_id],
         search=search,
         board_id=board_id,
+        limit=99999,
+        offset=0,
     )
-    team_group = grouped[0] if grouped else {
-        "team_id": team_id,
-        "team_name": "",
-        "total_tickets": 0,
-        "in_progress_tickets": 0,
-        "blocked_tickets": 0,
-        "members": [],
-    }
 
-    assigned_items: list[dict[str, Any]] = []
-    for member in team_group.get("members", []):
-        assigned_items.extend(member.get("items", []))
+    cnt_in_progress = 0
+    cnt_blocked = 0
+    for item in assigned_items:
+        if _status_bucket(str(item.get("status") or "")) == "in_progress":
+            cnt_in_progress += 1
+        dependencies = item.get("dependencies") or {}
+        blockers = dependencies.get("blockers") if isinstance(dependencies, dict) else []
+        if isinstance(blockers, list) and blockers:
+            cnt_blocked += 1
 
     work_done = [item for item in assigned_items if _status_bucket(str(item.get("status") or "")) == "done"]
+
+    all_team_members = {
+        str(member.get("display_name") or "").strip().casefold()
+        for member in team_meta.get("members", [])
+        if str(member.get("display_name") or "").strip()
+    }
 
     where_clause, params = _build_ticket_filter_clause(
         statuses=statuses,
@@ -984,27 +1163,30 @@ def load_team_detail_tabs(
         board_id=board_id,
         table_alias="tc",
     )
-    where_parts: list[str] = ["t.team_id = ?"]
-    params_with_team = [team_id]
-    if where_clause:
-        where_parts.append(where_clause.replace("WHERE", "", 1).strip())
-    params_with_team.extend(params)
-    reported_where = f"WHERE {' AND '.join(where_parts)}"
 
     with get_connection() as conn:
-        reported_rows = conn.execute(
-            f"""
-            SELECT DISTINCT tc.*
-            FROM teams t
-            JOIN team_members tm ON tm.team_id = t.team_id
-            JOIN tickets_current tc ON LOWER(TRIM(tc.reporter)) = LOWER(TRIM(tm.display_name))
-            {reported_where}
-            ORDER BY tc.updated DESC, tc.ticket_key ASC
-            """,
-            params_with_team,
-        ).fetchall()
+        try:
+            all_reported_rows = conn.execute(
+                f"""
+                SELECT tc.*
+                FROM tickets_current tc
+                {where_clause}
+                ORDER BY tc.updated DESC, tc.ticket_key ASC
+                """,
+                params
+            ).fetchall()
+        except sqlite3.OperationalError:
+            all_reported_rows = []
 
-    reported_items = [_ticket_from_row(row) for row in reported_rows]
+    reported_items = []
+    for row in all_reported_rows:
+        ticket = _ticket_from_row(row)
+        rep = str(ticket.get("reporter") or "").strip()
+        matched_csv = match_assignee_to_member(rep)
+        if matched_csv and matched_csv.casefold() in all_team_members:
+            ticket["team_id"] = team_meta.get("team_id")
+            ticket["team_name"] = team_meta.get("team_name")
+            reported_items.append(ticket)
 
     timeline = {
         "todo": 0,
@@ -1018,14 +1200,16 @@ def load_team_detail_tabs(
 
     return {
         "team": {
-            "team_id": team_group.get("team_id"),
-            "team_name": team_group.get("team_name"),
+            "team_id": team_meta.get("team_id") or team_id,
+            "team_name": team_meta.get("team_name") or "",
+            "description": team_meta.get("description") or "",
+            "members": team_meta.get("members", []),
         },
         "tickets_assigned": {
             "metrics": {
-                "total": int(team_group.get("total_tickets") or 0),
-                "in_progress": int(team_group.get("in_progress_tickets") or 0),
-                "blocked": int(team_group.get("blocked_tickets") or 0),
+                "total": len(assigned_items),
+                "in_progress": cnt_in_progress,
+                "blocked": cnt_blocked,
             },
             "items": assigned_items,
         },

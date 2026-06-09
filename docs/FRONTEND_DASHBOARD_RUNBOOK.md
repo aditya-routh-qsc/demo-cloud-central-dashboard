@@ -74,6 +74,12 @@ Manual checks:
 - Confirm the shell reflows to a compact stacked layout below 900px width.
 - Confirm the advanced filter region can be collapsed without clearing selected values.
 
+7. Team Details from CSV source
+- Open Teams workspace and verify team cards are selectable and not external hyperlinks.
+- Use the Teams search box and confirm cards filter by team name.
+- Select a team and confirm Team Details shows CSV-driven member fields (Name, Role, Skillset, Location, Contractor, Notes).
+- Confirm summary chips show member count, unique locations, and contractor values from CSV rows.
+
 ## Known Limits
 
 - Mobile layout is intentionally read-only summary mode.

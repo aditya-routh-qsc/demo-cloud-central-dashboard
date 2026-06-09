@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""
-InfoComm India Schedule Scraper
-Scrapes the summit/show schedule from the official InfoComm India website.
+"""InfoComm schedule scraper.
+
+This scraper now captures only available schedule dates for each show.
 """
 
 import argparse
@@ -19,10 +19,7 @@ SHOW_URLS = {
 }
 
 async def scrape_schedule(url: str, fallback_path: Path | None = None) -> list[dict]:
-    """Navigates to the schedule URL and extracts session details."""
-    from urllib.parse import urlparse
-    parsed_url = urlparse(url)
-    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
+    """Navigate to the schedule URL and extract only schedule dates."""
     
     print(f"[*] Starting scraper for URL: {url}")
     try:
@@ -35,71 +32,25 @@ async def scrape_schedule(url: str, fallback_path: Path | None = None) -> list[d
             await page.goto(url, wait_until="networkidle", timeout=60000)
             print(f"[*] Page loaded. Title: {await page.title()}")
             
-            # Find schedule date tabs and panels
+            # Find schedule date tabs only.
             tabs_locator = page.locator(".p-tabs__navigation__title__link.js-tab-toggle")
             tabs_count = await tabs_locator.count()
-            
-            panels_locator = page.locator(".p-tabs__body__content")
-            panels_count = await panels_locator.count()
-            
-            print(f"[*] Found {tabs_count} date tabs and {panels_count} panels.")
-            
-            schedule = []
-            for d in range(min(tabs_count, panels_count)):
-                date_text = await tabs_locator.nth(d).text_content()
-                date_text = date_text.strip()
-                
-                panel = panels_locator.nth(d)
-                items_locator = panel.locator(".m-seminar-list__list__items__item")
-                items_count = await items_locator.count()
-                print(f"[*] Extracting {items_count} items for date: {date_text}")
-                
-                for i in range(items_count):
-                    item = items_locator.nth(i)
-                    
-                    # Extract Title & Link
-                    title_el = item.locator(".m-seminar-list__list__items__item__title")
-                    title = ""
-                    link = ""
-                    if await title_el.count() > 0:
-                        title = (await title_el.text_content()).strip()
-                        link_el = title_el.locator("a")
-                        if await link_el.count() > 0:
-                            href = await link_el.get_attribute("href")
-                            if href:
-                                link = href if href.startswith("http") else f"{base_url}{href.lstrip('/')}"
-                    
-                    # Extract Location
-                    location_el = item.locator(".m-seminar-list__list__items__item__location")
-                    location = ""
-                    if await location_el.count() > 0:
-                        location = (await location_el.text_content()).replace("\n", " ").strip()
-                    
-                    # Extract Duration/Time
-                    duration_el = item.locator(".m-seminar-list__list__items__item__duration")
-                    duration = ""
-                    if await duration_el.count() > 0:
-                        duration = (await duration_el.text_content()).strip()
-                    
-                    # Extract Description
-                    desc_el = item.locator(".m-seminar-list__list__items__item__description")
-                    description = ""
-                    if await desc_el.count() > 0:
-                        description = (await desc_el.text_content()).strip()
-                        
-                    schedule.append({
-                        "date": date_text,
-                        "title": title,
-                        "duration": duration,
-                        "location": location,
-                        "link": link,
-                        "description": description
-                    })
+            print(f"[*] Found {tabs_count} date tabs.")
+
+            date_items: list[dict] = []
+            seen_dates: set[str] = set()
+            for index in range(tabs_count):
+                raw_date_text = await tabs_locator.nth(index).text_content()
+                date_text = str(raw_date_text or "").strip()
+                if not date_text or date_text in seen_dates:
+                    continue
+                seen_dates.add(date_text)
+                date_items.append({"date": date_text})
                 
             await browser.close()
-            if not schedule:
-                raise ValueError("No schedule items found or extracted.")
-            return schedule
+            if not date_items:
+                raise ValueError("No schedule dates found or extracted.")
+            return date_items
 
     except Exception as e:
         print(f"[!] Error during scraping: {e}", file=sys.stderr)
@@ -135,11 +86,11 @@ def save_to_json(data: list[dict], filepath: Path):
     print(f"[+] Successfully saved {len(data)} items to JSON file: {filepath}")
 
 def save_to_csv(data: list[dict], filepath: Path):
-    """Saves the scraped data to a CSV file."""
+    """Saves the scraped dates-only data to a CSV file."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    headers = ["date", "title", "duration", "location", "link", "description"]
+    headers = ["date"]
     with open(filepath, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
+        writer = csv.DictWriter(f, fieldnames=headers, extrasaction="ignore")
         writer.writeheader()
         for row in data:
             writer.writerow(row)

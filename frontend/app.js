@@ -1,4 +1,5 @@
 const state = {
+  activeTab: "overview",
   filters: {
     search: "",
     teams: [],
@@ -19,16 +20,12 @@ const state = {
   tickets: [],
   ticketGroups: [],
   ticketTotal: 0,
-  network: null,
-  networkLoadError: "",
   teamsWorkspace: null,
+  teamWorkspaceSearch: "",
   selectedTeamId: "",
-  selectedTeamTab: "assigned",
   teamDetail: null,
-  teamDetailLoading: false,
   jiraDomain: "qsc.atlassian.net",
   charts: {},
-  cy: null,
   infocomm: {
     selectedShow: "india",
     selectedDate: "",
@@ -43,58 +40,11 @@ const state = {
 
 const pollIntervalMs = 15000;
 const mobileBreakpoint = 768;
-const maxTicketLimit = 1000;
-
-const GRAPH_SEMANTICS = {
-  issueTypes: [
-    { key: "bug", label: "Bug", color: "#ff6b6b" },
-    { key: "story", label: "Story", color: "#1dd3ff" },
-    { key: "task", label: "Task", color: "#3ad29f" },
-    { key: "epic", label: "Epic", color: "#9b7bff" },
-    { key: "sub_task", label: "Sub-task", color: "#f7b267" },
-    { key: "unknown", label: "Unknown", color: "#7b8ca6" },
-  ],
-  dependencyTypes: [
-    { key: "blockers", label: "Blockers", color: "#ff9f43" },
-    { key: "blocks", label: "Blocks", color: "#ff6b6b" },
-    { key: "depends_on", label: "Depends on", color: "#3ad29f" },
-    { key: "relates_to", label: "Relates to", color: "#1dd3ff" },
-    { key: "duplicates", label: "Duplicates", color: "#f85d9f" },
-    { key: "unknown", label: "Unknown", color: "#7b8ca6" },
-  ],
-  classifications: [
-    { key: "intra_team", label: "Intra-team", lineStyle: "solid", color: "#3ad29f" },
-    { key: "inter_team", label: "Inter-team", lineStyle: "dashed", color: "#ff9f43" },
-    { key: "unknown", label: "Unknown", lineStyle: "solid", color: "#7b8ca6" },
-  ],
-};
-
-const ISSUE_TYPE_BY_KEY = new Map(GRAPH_SEMANTICS.issueTypes.map((entry) => [entry.key, entry]));
-const DEPENDENCY_TYPE_BY_KEY = new Map(GRAPH_SEMANTICS.dependencyTypes.map((entry) => [entry.key, entry]));
-const CLASSIFICATION_BY_KEY = new Map(GRAPH_SEMANTICS.classifications.map((entry) => [entry.key, entry]));
-const ISSUE_TYPE_ALIASES = new Map([
-  ["subtask", "sub_task"],
-  ["sub_task", "sub_task"],
-  ["sub-task", "sub_task"],
-  ["technical_task", "task"],
-  ["development_task", "task"],
-  ["feature", "story"],
-]);
-const DEPENDENCY_TYPE_ALIASES = new Map([
-  ["blocking", "blocks"],
-  ["blocker", "blockers"],
-  ["blockers", "blockers"],
-  ["blocks", "blocks"],
-  ["depends_upon", "depends_on"],
-  ["depends_on", "depends_on"],
-  ["relates", "relates_to"],
-  ["relates_to", "relates_to"],
-  ["duplicate", "duplicates"],
-  ["duplicates", "duplicates"],
-]);
 
 const el = {
   dashboardShell: document.querySelector(".dashboard-shell"),
+  controlToolbar: document.querySelector(".control-toolbar"),
+  toolbarLeft: document.querySelector(".control-toolbar .toolbar-left"),
   syncChip: document.getElementById("syncChip"),
   lastUpdatedText: document.getElementById("lastUpdatedText"),
   manualSyncBtn: document.getElementById("manualSyncBtn"),
@@ -114,24 +64,15 @@ const el = {
   applyFiltersBtn: document.getElementById("applyFiltersBtn"),
   resetFiltersBtn: document.getElementById("resetFiltersBtn"),
   ticketsGroups: document.getElementById("ticketsGroups"),
-  nodeDetails: document.getElementById("nodeDetails"),
-  networkLegend: document.getElementById("networkLegend"),
-  networkSkeleton: document.getElementById("networkSkeleton"),
-  networkEmptyState: document.getElementById("networkEmptyState"),
-  networkMobileSummary: document.getElementById("networkMobileSummary"),
-  networkGraph: document.getElementById("networkGraph"),
   kpiTotalActive: document.getElementById("kpiTotalActive"),
   kpiOpenBugs: document.getElementById("kpiOpenBugs"),
   kpiStale: document.getElementById("kpiStale"),
   kpiFilteredTotal: document.getElementById("kpiFilteredTotal"),
   teamsGrid: document.getElementById("teamsGrid"),
+  teamWorkspaceSearchInput: document.getElementById("teamWorkspaceSearchInput"),
   teamDetailTitle: document.getElementById("teamDetailTitle"),
-  teamDetailTabs: document.getElementById("teamDetailTabs"),
   teamDetailSkeleton: document.getElementById("teamDetailSkeleton"),
-  teamAssignedPanel: document.getElementById("teamAssignedPanel"),
-  teamWorkDonePanel: document.getElementById("teamWorkDonePanel"),
-  teamReportedPanel: document.getElementById("teamReportedPanel"),
-  teamTimelinePanel: document.getElementById("teamTimelinePanel"),
+  teamDetailContent: document.getElementById("teamDetailContent"),
   infocommWebsiteUrl: document.getElementById("infocommWebsiteUrl"),
   infocommScheduleTitle: document.getElementById("infocommScheduleTitle"),
   infocommSkeleton: document.getElementById("infocommSkeleton"),
@@ -214,6 +155,38 @@ function setAdvancedFiltersOpen(nextOpen, options = {}) {
   }
 }
 
+function shouldHideFilterControlsForTab(tabName) {
+  return tabName === "teams" || tabName === "infocomm";
+}
+
+function syncFilterControlsVisibility(tabName) {
+  const hideFilters = shouldHideFilterControlsForTab(tabName);
+  if (el.controlToolbar) {
+    if (hideFilters) {
+      el.controlToolbar.classList.remove("control-toolbar", "panel");
+    } else {
+      el.controlToolbar.classList.add("control-toolbar", "panel");
+    }
+    el.controlToolbar.hidden = hideFilters;
+  }
+
+  if (el.toolbarLeft) {
+    el.toolbarLeft.hidden = hideFilters;
+  }
+
+  if (!el.advancedFilters) {
+    return;
+  }
+
+  if (hideFilters) {
+    el.advancedFilters.classList.add("is-collapsed");
+    el.advancedFilters.hidden = true;
+    return;
+  }
+
+  syncAdvancedFiltersDisclosure();
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -239,200 +212,6 @@ function uniqueValues(values) {
     items.push(value);
   }
   return items;
-}
-
-function normalizeSemanticKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-}
-
-function getIssueTypeEntry(rawValue) {
-  const normalizedValue = normalizeSemanticKey(rawValue);
-  const canonicalValue = ISSUE_TYPE_ALIASES.get(normalizedValue) || normalizedValue;
-  if (ISSUE_TYPE_BY_KEY.has(canonicalValue)) {
-    return ISSUE_TYPE_BY_KEY.get(canonicalValue);
-  }
-
-  // Fallback matching handles verbose Jira issue type labels such as
-  // "Technical Task" or "Epic Feature" without requiring exact aliases.
-  if (canonicalValue.includes("epic")) {
-    return ISSUE_TYPE_BY_KEY.get("epic");
-  }
-  if (canonicalValue.includes("task")) {
-    return ISSUE_TYPE_BY_KEY.get("task");
-  }
-  if (canonicalValue.includes("story")) {
-    return ISSUE_TYPE_BY_KEY.get("story");
-  }
-  if (canonicalValue.includes("bug")) {
-    return ISSUE_TYPE_BY_KEY.get("bug");
-  }
-
-  return ISSUE_TYPE_BY_KEY.get("unknown");
-}
-
-function getDependencyTypeEntry(rawValue) {
-  const normalizedValue = normalizeSemanticKey(rawValue);
-  const canonicalValue = DEPENDENCY_TYPE_ALIASES.get(normalizedValue) || normalizedValue;
-  return DEPENDENCY_TYPE_BY_KEY.get(canonicalValue) || DEPENDENCY_TYPE_BY_KEY.get("unknown");
-}
-
-function getClassificationEntry(rawValue) {
-  const normalizedValue = normalizeSemanticKey(rawValue);
-  return CLASSIFICATION_BY_KEY.get(normalizedValue) || CLASSIFICATION_BY_KEY.get("unknown");
-}
-
-function buildNetworkStyles() {
-  const isDark = document.body.getAttribute("data-theme") === "dark";
-  const getThemeColor = (key, defaultColor) => {
-    if (isDark) return defaultColor;
-    const lightOverrides = {
-      // Edges
-      "blockers": "#e67e22",
-      "blocks": "#e74c3c",
-      "depends_on": "#27ae60",
-      "relates_to": "#2980b9",
-      "duplicates": "#8e44ad",
-      // Nodes (Pastel backgrounds)
-      "bug": "#fecaca",
-      "story": "#bfdbfe",
-      "task": "#bbf7d0",
-      "epic": "#e9d5ff",
-      "sub_task": "#fed7aa",
-      "unknown": "#cbd5e1",
-    };
-    return lightOverrides[key] || defaultColor;
-  };
-
-  const labelColor = isDark ? "#ffffff" : "#0f172a";
-
-  const styles = [
-    {
-      selector: "node",
-      style: {
-        "background-color": getThemeColor("unknown", ISSUE_TYPE_BY_KEY.get("unknown").color),
-        color: labelColor,
-        "font-size": 9,
-        "text-valign": "center",
-        label: "data(ticket_key)",
-      },
-    },
-    {
-      selector: "edge",
-      style: {
-        width: 2,
-        "line-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
-        "target-arrow-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
-        "source-arrow-color": getThemeColor("unknown", DEPENDENCY_TYPE_BY_KEY.get("unknown").color),
-        "source-arrow-shape": "none",
-        "target-arrow-shape": "triangle",
-        "curve-style": "bezier",
-      },
-    },
-  ];
-
-  for (const entry of GRAPH_SEMANTICS.issueTypes) {
-    styles.push({
-      selector: `node[issue_type_key = '${entry.key}']`,
-      style: {
-        "background-color": getThemeColor(entry.key, entry.color),
-      },
-    });
-  }
-
-  for (const entry of GRAPH_SEMANTICS.dependencyTypes) {
-    const col = getThemeColor(entry.key, entry.color);
-    styles.push({
-      selector: `edge[dependency_type_key = '${entry.key}']`,
-      style: {
-        "line-color": col,
-        "target-arrow-color": col,
-        "source-arrow-color": col,
-      },
-    });
-  }
-
-  styles.push({
-    selector: "edge[dependency_type_key = 'relates_to']",
-    style: {
-      "source-arrow-shape": "none",
-      "target-arrow-shape": "none",
-    },
-  });
-
-  for (const entry of GRAPH_SEMANTICS.classifications) {
-    styles.push({
-      selector: `edge[classification_key = '${entry.key}']`,
-      style: {
-        "line-style": entry.lineStyle,
-      },
-    });
-  }
-
-  return styles;
-}
-
-function renderLegendList(entries, variant) {
-  return entries
-    .map((entry) => {
-      if (variant === "line") {
-        return `
-          <li class="legend-item">
-            <span class="legend-line ${entry.lineStyle}" style="color: ${entry.color};"></span>
-            <span>${escapeHtml(entry.label)}</span>
-          </li>
-        `;
-      }
-
-      return `
-        <li class="legend-item">
-          <span class="legend-swatch" style="background-color: ${entry.color};"></span>
-          <span>${escapeHtml(entry.label)}</span>
-        </li>
-      `;
-    })
-    .join("");
-}
-
-function renderNetworkLegend() {
-  if (!el.networkLegend) {
-    return;
-  }
-
-  el.networkLegend.className = "network-legend is-visible";
-  el.networkLegend.innerHTML = `
-    <div class="legend-grid">
-      <section class="legend-section">
-        <h4>Ticket types</h4>
-        <ul class="legend-list">
-          ${renderLegendList(GRAPH_SEMANTICS.issueTypes, "swatch")}
-        </ul>
-      </section>
-      <section class="legend-section">
-        <h4>Dependency types</h4>
-        <ul class="legend-list">
-          ${renderLegendList(GRAPH_SEMANTICS.dependencyTypes, "swatch")}
-        </ul>
-      </section>
-      <section class="legend-section">
-        <h4>Classification</h4>
-        <ul class="legend-list">
-          ${renderLegendList(GRAPH_SEMANTICS.classifications, "line")}
-        </ul>
-      </section>
-    </div>
-  `;
-}
-
-function hideNetworkLegend() {
-  if (!el.networkLegend) {
-    return;
-  }
-
-  el.networkLegend.className = "network-legend";
-  el.networkLegend.innerHTML = "";
 }
 
 function parseStatusQuery(params) {
@@ -711,7 +490,6 @@ function buildTicketsQuery() {
     params.append("assignee_exclude", assignee);
   }
   if (state.filters.boardId) params.set("board_id", state.filters.boardId);
-  params.set("limit", String(maxTicketLimit));
   params.set("offset", String(state.filters.offset));
   return `/api/tickets?${params.toString()}`;
 }
@@ -1000,7 +778,6 @@ function renderTickets() {
     return `<details class="ticket-group" open>
       <summary>
         <strong>${escapeHtml(group.team_name || "Unmapped Team")}</strong>
-        <span class="ticket-group-badge">Total: ${metrics.total || 0} Tickets | ${metrics.in_progress || 0} In Progress | ${metrics.blocked || 0} Blocked</span>
       </summary>
       <div class="ticket-member-list">${memberSections.join("")}</div>
     </details>`;
@@ -1015,28 +792,33 @@ function renderTickets() {
 function renderTeamsWorkspace() {
   const payload = state.teamsWorkspace || { teams: [] };
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
+  const searchTerm = String(state.teamWorkspaceSearch || "").trim().toLowerCase();
+  const filteredTeams = teams.filter((team) => {
+    if (!searchTerm) {
+      return true;
+    }
+    const teamName = String(team.display_name || team.team_name || "").toLowerCase();
+    const description = String(team.description || "").toLowerCase();
+    return teamName.includes(searchTerm) || description.includes(searchTerm);
+  });
+
   if (!teams.length) {
     el.teamsGrid.innerHTML = "<p class='muted'>No team data available in cache.</p>";
     return;
   }
 
-  const cards = teams.map((team) => {
-    const members = Array.isArray(team.members) ? team.members : [];
-    const memberLinks = members.map((member) => {
-      const profileUrl = String(member.profile_url || "").trim();
-      const label = escapeHtml(member.display_name || "Unknown Member");
-      if (!profileUrl) {
-        return `<li>${label}</li>`;
-      }
-      return `<li><a class="jira-link" href="${profileUrl}" target="_blank" rel="noopener noreferrer">${label} <i data-lucide="external-link" class="external-icon" aria-hidden="true"></i></a></li>`;
-    });
+  if (!filteredTeams.length) {
+    el.teamsGrid.innerHTML = "<p class='muted'>No teams match your search.</p>";
+    return;
+  }
+
+  const cards = filteredTeams.map((team) => {
+    const teamDisplayName = team.display_name || team.team_name || "Unnamed Team";
 
     return `<article class="team-card ${state.selectedTeamId === team.team_id ? "is-selected" : ""}" data-team-id="${escapeHtml(team.team_id)}">
       <header>
-        <h4>${escapeHtml(team.display_name || team.team_name || "Unnamed Team")}</h4>
-        <p class="muted">${escapeHtml(team.description || "")}</p>
+        <h4>${escapeHtml(teamDisplayName)}</h4>
       </header>
-      <ul>${memberLinks.join("")}</ul>
     </article>`;
   });
 
@@ -1044,10 +826,11 @@ function renderTeamsWorkspace() {
 
   const selectableCards = el.teamsGrid.querySelectorAll(".team-card");
   for (const card of selectableCards) {
-    card.addEventListener("click", async () => {
+    card.addEventListener("click", () => {
       state.selectedTeamId = String(card.getAttribute("data-team-id") || "").trim();
+      state.teamDetail = null;
       renderTeamsWorkspace();
-      await loadSelectedTeamDetail();
+      renderTeamDetailPanels();
     });
   }
 
@@ -1056,254 +839,83 @@ function renderTeamsWorkspace() {
   }
 }
 
-function setActiveTeamTab(tabKey) {
-  state.selectedTeamTab = tabKey;
-  const tabs = document.querySelectorAll(".team-tab");
-  for (const tab of tabs) {
-    tab.classList.toggle("is-active", tab.dataset.teamTab === tabKey);
-  }
-
-  const panelMap = {
-    assigned: el.teamAssignedPanel,
-    work_done: el.teamWorkDonePanel,
-    reported: el.teamReportedPanel,
-    timeline: el.teamTimelinePanel,
-  };
-  for (const [key, panel] of Object.entries(panelMap)) {
-    panel.classList.toggle("is-active", key === tabKey);
-  }
-}
-
 function renderTeamDetailPanels() {
-  const detail = state.teamDetail;
-  if (!detail) {
+  const teams = Array.isArray(state.teamsWorkspace?.teams) ? state.teamsWorkspace.teams : [];
+  const selectedTeam = teams.find((team) => String(team.team_id || "").trim() === state.selectedTeamId) || null;
+
+  if (!selectedTeam) {
     el.teamDetailTitle.textContent = "Team Details";
-    el.teamAssignedPanel.innerHTML = "<p class='muted'>Select a team to view assigned tickets.</p>";
-    el.teamWorkDonePanel.innerHTML = "<p class='muted'>Select a team to view completed work.</p>";
-    el.teamReportedPanel.innerHTML = "<p class='muted'>Select a team to view reported tickets.</p>";
-    el.teamTimelinePanel.innerHTML = "<p class='muted'>Select a team to view timeline.</p>";
-    return;
-  }
-
-  const team = detail.team || {};
-  el.teamDetailTitle.textContent = `${team.display_name || team.team_name || "Team"} Details`;
-
-  const assigned = detail.tickets_assigned || {};
-  const assignedItems = Array.isArray(assigned.items) ? assigned.items : [];
-  const assignedRows = assignedItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")} (${escapeHtml(item.status || "Unknown")})</li>`);
-  const assignedMetrics = assigned.metrics || {};
-  el.teamAssignedPanel.innerHTML = `
-    <div class="team-metrics-row">
-      <span class="metric-pill">Total: ${assignedMetrics.total || 0}</span>
-      <span class="metric-pill">In Progress: ${assignedMetrics.in_progress || 0}</span>
-      <span class="metric-pill">Blocked: ${assignedMetrics.blocked || 0}</span>
-    </div>
-    <ul>${assignedRows.join("") || "<li class='muted'>No assigned tickets.</li>"}</ul>
-  `;
-
-  const workDoneItems = Array.isArray(detail.work_done?.items) ? detail.work_done.items : [];
-  el.teamWorkDonePanel.innerHTML = `<ul>${workDoneItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")}</li>`).join("") || "<li class='muted'>No completed/resolved tickets.</li>"}</ul>`;
-
-  const reportedItems = Array.isArray(detail.tickets_reported?.items) ? detail.tickets_reported.items : [];
-  el.teamReportedPanel.innerHTML = `<ul class="reported-list">${reportedItems.map((item) => `<li>${escapeHtml(item.ticket_key)} - ${escapeHtml(item.summary || "No summary")} <span class="reported-pill">Reported By Team</span></li>`).join("") || "<li class='muted'>No reported tickets.</li>"}</ul>`;
-
-  const timeline = detail.timeline || { todo: 0, in_progress: 0, done: 0, total: 0 };
-  const total = Number(timeline.total || (timeline.todo || 0) + (timeline.in_progress || 0) + (timeline.done || 0));
-  const toPct = (value) => (total > 0 ? Math.round((Number(value || 0) / total) * 100) : 0);
-  el.teamTimelinePanel.innerHTML = `
-    <div class="timeline-lane"><span>To Do (${timeline.todo || 0})</span><div class="timeline-bar todo" style="width:${toPct(timeline.todo)}%"></div></div>
-    <div class="timeline-lane"><span>In Progress (${timeline.in_progress || 0})</span><div class="timeline-bar in-progress" style="width:${toPct(timeline.in_progress)}%"></div></div>
-    <div class="timeline-lane"><span>Done (${timeline.done || 0})</span><div class="timeline-bar done" style="width:${toPct(timeline.done)}%"></div></div>
-  `;
-}
-
-async function loadSelectedTeamDetail() {
-  if (!state.selectedTeamId) {
-    state.teamDetail = null;
-    renderTeamDetailPanels();
-    return;
-  }
-
-  state.teamDetailLoading = true;
-  el.teamDetailSkeleton.classList.add("is-visible");
-  try {
-    state.teamDetail = await apiGet(`/api/teams/${encodeURIComponent(state.selectedTeamId)}`);
-  } catch (_error) {
-    state.teamDetail = null;
-  } finally {
-    state.teamDetailLoading = false;
-    el.teamDetailSkeleton.classList.remove("is-visible");
-    renderTeamDetailPanels();
-    setActiveTeamTab(state.selectedTeamTab);
-  }
-}
-
-function renderNetworkEmptyState(message, isError = false) {
-  el.networkEmptyState.textContent = message;
-  el.networkEmptyState.className = isError ? "network-empty error is-visible" : "network-empty muted is-visible";
-}
-
-function clearNetworkEmptyState() {
-  el.networkEmptyState.textContent = "";
-  el.networkEmptyState.className = "network-empty muted";
-}
-
-function renderMobileDependencySummary() {
-  const dep = (state.metrics && state.metrics.dependency_summary) || {};
-  const networkCounts = (state.network && state.network.counts) || { nodes: 0, edges: 0 };
-  el.networkMobileSummary.className = "network-mobile-summary is-visible";
-  el.networkMobileSummary.innerHTML = `
-    <div class="summary-grid">
-      <article class="summary-card"><h4>Blockers</h4><p>${dep.blockers || 0}</p></article>
-      <article class="summary-card"><h4>Inter-team</h4><p>${dep.inter_team || 0}</p></article>
-      <article class="summary-card"><h4>Intra-team</h4><p>${dep.intra_team || 0}</p></article>
-      <article class="summary-card"><h4>Edges</h4><p>${networkCounts.edges || 0}</p></article>
-    </div>
-  `;
-}
-
-function renderNodeDependencyDetails(nodeId) {
-  const network = state.network || { nodes: [], edges: [] };
-  const nodeById = new Map((network.nodes || []).map((item) => [item.id, item]));
-  const incoming = [];
-  const outgoing = [];
-
-  for (const edge of network.edges || []) {
-    if (edge.target_ticket === nodeId) {
-      incoming.push(edge);
+    if (el.teamDetailContent) {
+      el.teamDetailContent.innerHTML = "<p class='muted'>Select a team to view details and members.</p>";
     }
-    if (edge.source_ticket === nodeId) {
-      outgoing.push(edge);
-    }
-  }
-
-  const formatEdge = (edge, isIncoming) => {
-    const otherKey = isIncoming ? edge.source_ticket : edge.target_ticket;
-    const otherNode = nodeById.get(otherKey) || {};
-    const relation = edge.relation_description || edge.relation_name || edge.dependency_type || "dependency";
-    const classification = edge.classification || "unknown";
-    const status = otherNode.status || "Unknown";
-    return `<li><strong>${escapeHtml(otherKey)}</strong> (${escapeHtml(status)}) - ${escapeHtml(relation)} [${escapeHtml(classification)}]</li>`;
-  };
-
-  const incomingHtml = incoming.length
-    ? `<ul>${incoming.slice(0, 8).map((edge) => formatEdge(edge, true)).join("")}</ul>`
-    : "<p class='muted'>No incoming dependencies.</p>";
-
-  const outgoingHtml = outgoing.length
-    ? `<ul>${outgoing.slice(0, 8).map((edge) => formatEdge(edge, false)).join("")}</ul>`
-    : "<p class='muted'>No outgoing dependencies.</p>";
-
-  const hiddenIncoming = incoming.length > 8 ? `<p class='muted'>+${incoming.length - 8} more incoming</p>` : "";
-  const hiddenOutgoing = outgoing.length > 8 ? `<p class='muted'>+${outgoing.length - 8} more outgoing</p>` : "";
-
-  return `
-    <p><strong>Dependency details</strong></p>
-    <p>Incoming: ${incoming.length} | Outgoing: ${outgoing.length}</p>
-    <p><strong>Incoming (depends on this ticket)</strong></p>
-    ${incomingHtml}
-    ${hiddenIncoming}
-    <p><strong>Outgoing (this ticket depends on)</strong></p>
-    ${outgoingHtml}
-    ${hiddenOutgoing}
-  `;
-}
-
-function renderNetwork() {
-  const cyCtor = window.cytoscape;
-  const data = state.network || { nodes: [], edges: [], counts: { nodes: 0, edges: 0 } };
-
-  if (state.cy) {
-    state.cy.destroy();
-    state.cy = null;
-  }
-
-  if (window.innerWidth <= mobileBreakpoint) {
-    el.networkGraph.style.display = "none";
-    hideNetworkLegend();
-    renderMobileDependencySummary();
-    renderNetworkEmptyState("Mobile summary mode: interactive graph is optimized for desktop.");
     return;
   }
 
-  el.networkGraph.style.display = "block";
-  el.networkMobileSummary.className = "network-mobile-summary";
-  el.networkMobileSummary.innerHTML = "";
-  renderNetworkLegend();
+  const teamName = `${selectedTeam.display_name || selectedTeam.team_name || "Team"}`;
+  const members = Array.isArray(selectedTeam.members) ? selectedTeam.members : [];
 
-  if (state.networkLoadError) {
-    renderNetworkEmptyState("Dependency graph unavailable. Check API/network logs and retry.", true);
-    return;
-  }
+  el.teamDetailTitle.textContent = `${teamName} Details`;
 
-  if (!cyCtor) {
-    renderNetworkEmptyState("Dependency graph library failed to load. Check CDN access.", true);
-    return;
-  }
+  const memberRows = members.map((member) => {
+    const label = escapeHtml(member.display_name || "Unknown Member");
+    const role = escapeHtml(member.role || "-");
+    const skillset = escapeHtml(member.skillset || "-");
+    const location = escapeHtml(member.location || "-");
+    const contractor = escapeHtml(member.contractor || "-");
+    const notes = escapeHtml(member.notes || "-");
 
-  if (!Array.isArray(data.edges) || data.edges.length === 0) {
-    renderNetworkEmptyState("No dependency edges found for the active filters.");
-  } else {
-    clearNetworkEmptyState();
-  }
-
-  const elements = [];
-  for (const node of data.nodes || []) {
-    const issueType = String(node.issue_type || "").trim();
-    elements.push({
-      data: {
-        id: node.id,
-        ticket_key: node.ticket_key,
-        summary: node.summary || "",
-        status: node.status || "",
-        reporter: node.reporter || "",
-        issue_type: issueType,
-        issue_type_key: getIssueTypeEntry(issueType).key,
-      },
-    });
-  }
-
-  for (const edge of data.edges || []) {
-    const dependencyType = String(edge.relation_description || edge.relation_name || edge.dependency_type || "").trim();
-    const classification = String(edge.classification || "").trim();
-    elements.push({
-      data: {
-        id: `${edge.source_ticket}->${edge.target_ticket}->${normalizeSemanticKey(dependencyType)}->${normalizeSemanticKey(classification)}`,
-        source: edge.source_ticket,
-        target: edge.target_ticket,
-        relation_name: edge.relation_name || "",
-        relation_description: edge.relation_description || "",
-        dependency_type: dependencyType,
-        dependency_type_key: getDependencyTypeEntry(dependencyType).key,
-        classification,
-        classification_key: getClassificationEntry(classification).key,
-      },
-    });
-  }
-
-  state.cy = cyCtor({
-    container: el.networkGraph,
-    elements,
-    style: buildNetworkStyles(),
-    layout: {
-      name: "cose",
-      animate: true,
-      fit: true,
-    },
+    return `<tr>
+      <td>${label}</td>
+      <td>${role}</td>
+      <td>${skillset}</td>
+      <td>${location}</td>
+      <td>${contractor}</td>
+      <td>${notes}</td>
+    </tr>`;
   });
 
-  state.cy.on("tap", "node", (event) => {
-    const node = event.target.data();
-    const issueUrl = jiraIssueUrl(node.id);
-    const dependencyDetails = renderNodeDependencyDetails(node.id);
-    el.nodeDetails.innerHTML = `<p><strong>${escapeHtml(node.ticket_key)}</strong></p>
-      <p>${escapeHtml(node.summary || "No summary")}</p>
-      <p>Status: ${escapeHtml(node.status || "Unknown")}</p>
-      <p>Reporter: ${escapeHtml(node.reporter || "Unknown")}</p>
-      <p>Ticket type: ${escapeHtml(node.issue_type || "Unknown")}</p>
-      ${dependencyDetails}
-      <p><a class="jira-link" href="${issueUrl}" target="_blank" rel="noopener noreferrer">Open in Jira</a></p>`;
-  });
+  const uniqueLocations = Array.from(
+    new Set(
+      members
+        .map((member) => String(member.location || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const uniqueContractors = Array.from(
+    new Set(
+      members
+        .map((member) => String(member.contractor || "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (el.teamDetailContent) {
+    el.teamDetailContent.innerHTML = `
+      <div class="team-meta-row muted">
+        <span><strong>Members:</strong> ${members.length}</span>
+        <span><strong>Locations:</strong> ${escapeHtml(uniqueLocations.join(", ") || "-")}</span>
+        <span><strong>Contractors:</strong> ${escapeHtml(uniqueContractors.join(", ") || "-")}</span>
+      </div>
+      <h4>Team Members</h4>
+      ${memberRows.length
+        ? `<div class="table-wrap team-member-table-wrap">
+            <table class="team-member-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th>Skillset</th>
+                  <th>Location</th>
+                  <th>Contractor</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>${memberRows.join("")}</tbody>
+            </table>
+          </div>`
+        : "<p class='muted'>No team members available.</p>"}
+    `;
+  }
 }
 
 function setSelectOptions(selectEl, values) {
@@ -1360,14 +972,10 @@ async function loadSyncStatus() {
 }
 
 async function loadDashboardData() {
-  if (el.networkSkeleton) {
-    el.networkSkeleton.classList.add("is-visible");
-  }
-  const [metricsResult, ticketsResult, networkResult, teamsWorkspaceResult] = await Promise.allSettled([
+  const [metricsResult, ticketsResult, teamsWorkspaceResult] = await Promise.allSettled([
     apiGet(buildSharedFilterQuery("/api/metrics")),
     apiGet(buildTicketsQuery()),
-    apiGet(buildSharedFilterQuery("/api/network")),
-    apiGet(buildSharedFilterQuery("/api/teams")),
+    apiGet("/api/teams"),
   ]);
 
   if (metricsResult.status !== "fulfilled") {
@@ -1390,23 +998,16 @@ async function loadDashboardData() {
     ? ticketsPayload.groups
     : buildGroupedTicketsFromRows(state.tickets);
 
-  if (networkResult.status === "fulfilled") {
-    state.network = networkResult.value;
-    state.networkLoadError = "";
-  } else {
-    state.network = null;
-    state.networkLoadError = String(networkResult.reason || "network load failed");
-  }
-
   if (teamsWorkspaceResult.status === "fulfilled") {
     state.teamsWorkspace = teamsWorkspaceResult.value;
     const teams = Array.isArray(state.teamsWorkspace?.teams) ? state.teamsWorkspace.teams : [];
     const teamIds = new Set(teams.map(t => String(t.team_id || "").trim()));
-    if (!state.selectedTeamId || !teamIds.has(state.selectedTeamId)) {
-      state.selectedTeamId = String(teams[0]?.team_id || "").trim();
+    if (state.selectedTeamId && !teamIds.has(state.selectedTeamId)) {
+      state.selectedTeamId = "";
     }
   } else {
     state.teamsWorkspace = { teams: [] };
+    state.selectedTeamId = "";
   }
 
   if (state.tickets.length) {
@@ -1420,15 +1021,12 @@ async function loadDashboardData() {
   renderAssigneeChart();
   refreshFilterOptions();
   renderTickets();
-  renderNetwork();
   renderTeamsWorkspace();
-  await loadSelectedTeamDetail();
-  if (el.networkSkeleton) {
-    el.networkSkeleton.classList.remove("is-visible");
-  }
+  renderTeamDetailPanels();
 }
 
 function setActiveTab(tabName) {
+  state.activeTab = tabName;
   const tabs = document.querySelectorAll(".tab");
   const views = document.querySelectorAll(".view");
   for (const tab of tabs) {
@@ -1437,6 +1035,7 @@ function setActiveTab(tabName) {
   for (const view of views) {
     view.classList.toggle("is-active", view.id === tabName);
   }
+  syncFilterControlsVisibility(tabName);
 }
 
 function bindTabNavigation() {
@@ -1473,13 +1072,11 @@ function bindActions() {
   bindExcludeOnDoubleClick(el.statusSelect, "statuses", "excludedStatuses");
   bindExcludeOnDoubleClick(el.assigneeSelect, "assignees", "excludedAssignees");
 
-  if (el.teamDetailTabs) {
-    const teamTabs = el.teamDetailTabs.querySelectorAll(".team-tab");
-    for (const tab of teamTabs) {
-      tab.addEventListener("click", () => {
-        setActiveTeamTab(String(tab.dataset.teamTab || "assigned"));
-      });
-    }
+  if (el.teamWorkspaceSearchInput) {
+    el.teamWorkspaceSearchInput.addEventListener("input", () => {
+      state.teamWorkspaceSearch = String(el.teamWorkspaceSearchInput.value || "").trim();
+      renderTeamsWorkspace();
+    });
   }
 
   if (el.assigneeSelectAllBtn) {
@@ -1537,7 +1134,6 @@ function bindActions() {
       state.ui.sidebarCollapsed = false;
       syncSidebarDisclosure();
     }
-    renderNetwork();
   });
 
   // InfoComm Show Selector buttons
@@ -1562,17 +1158,7 @@ async function loadInfoCommSchedule() {
   try {
     const data = await apiGet(`/api/infocomm/schedule/${state.infocomm.selectedShow}`);
     state.infocomm.schedule = data;
-    
-    // Auto-select the first date from the schedule
-    const dates = uniqueValues(data.map(item => item.date));
-    if (dates.length > 0) {
-      if (!dates.includes(state.infocomm.selectedDate)) {
-        state.infocomm.selectedDate = dates[0];
-      }
-    } else {
-      state.infocomm.selectedDate = "";
-    }
-    
+
     renderInfoCommUI();
   } catch (error) {
     console.error("Error loading InfoComm schedule:", error);
@@ -1605,61 +1191,21 @@ function renderInfoCommUI() {
     el.infocommWebsiteUrl.textContent = `Visit Official ${showNameMap[state.infocomm.selectedShow]} Website`;
   }
   
-  // Render Date Tabs
-  const dates = uniqueValues(state.infocomm.schedule.map(item => item.date));
-  el.infocommDateTabs.innerHTML = dates.map(date => {
-    const isActive = date === state.infocomm.selectedDate ? "is-active" : "";
-    return `<button class="infocomm-date-tab ${isActive}" data-date="${escapeHtml(date)}" type="button">${escapeHtml(date)}</button>`;
-  }).join("");
-  
-  // Add listeners to date tabs
-  const dateButtons = el.infocommDateTabs.querySelectorAll(".infocomm-date-tab");
-  for (const btn of dateButtons) {
-    btn.addEventListener("click", () => {
-      state.infocomm.selectedDate = btn.dataset.date;
-      renderInfoCommUI();
-    });
-  }
-  
-  // Render Session Cards for selected date
-  const filteredSessions = state.infocomm.schedule.filter(item => item.date === state.infocomm.selectedDate);
-  if (filteredSessions.length === 0) {
-    el.infocommScheduleList.innerHTML = '<p class="muted">No sessions scheduled for this date.</p>';
+  const dates = uniqueValues((state.infocomm.schedule || []).map((item) => item.date));
+  el.infocommDateTabs.innerHTML = "";
+
+  if (!dates.length) {
+    el.infocommScheduleList.innerHTML = '<p class="muted">No schedule dates available.</p>';
     return;
   }
-  
+
   el.infocommScheduleList.innerHTML = `
     <div class="infocomm-sessions-feed">
-      ${filteredSessions.map(session => {
-        const titleHtml = session.link 
-          ? `<a href="${escapeHtml(session.link)}" target="_blank">${escapeHtml(session.title)} <i data-lucide="external-link" class="external-icon" aria-hidden="true"></i></a>`
-          : escapeHtml(session.title);
-          
-        const locationHtml = session.location
-          ? `<span class="session-badge location"><i data-lucide="map-pin" aria-hidden="true"></i> ${escapeHtml(session.location)}</span>`
-          : "";
-          
-        const durationHtml = session.duration
-          ? `<span class="session-badge duration"><i data-lucide="clock" aria-hidden="true"></i> ${escapeHtml(session.duration)}</span>`
-          : "";
-          
-        const descHtml = session.description
-          ? `<p class="infocomm-session-desc">${escapeHtml(session.description)}</p>`
-          : "";
-          
-        return `
-          <article class="infocomm-session-card">
-            <div class="infocomm-session-header">
-              <h4 class="infocomm-session-title">${titleHtml}</h4>
-            </div>
-            <div class="infocomm-session-meta">
-              ${durationHtml}
-              ${locationHtml}
-            </div>
-            ${descHtml}
-          </article>
-        `;
-      }).join("")}
+      ${dates.map((date) => `
+        <article class="infocomm-session-card">
+          <h4 class="infocomm-session-title">${escapeHtml(date)}</h4>
+        </article>
+      `).join("")}
     </div>
   `;
 
@@ -1693,9 +1239,6 @@ function bindThemeToggle() {
     const nextTheme = currentTheme === "light" ? "dark" : "light";
     document.body.setAttribute("data-theme", nextTheme);
     localStorage.setItem("theme", nextTheme);
-    if (state.cy) {
-      renderNetwork();
-    }
   });
 }
 
@@ -1706,6 +1249,7 @@ async function bootstrap() {
   bindFilterDisclosure();
   bindThemeToggle();
   bindActions();
+  setActiveTab(state.activeTab);
   await loadSyncStatus();
   await loadDashboardData();
   syncInputsFromState();

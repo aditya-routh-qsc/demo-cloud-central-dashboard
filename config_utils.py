@@ -73,3 +73,8 @@ def get_database_path() -> str:
     parser = load_config()
     configured = parser.get("database", "path", fallback="dashboard_cache.db").strip()
     return configured
+
+
+def get_jira_project_key() -> str:
+    """Return Jira project key from .env with fallback."""
+    return os.getenv("JIRA_PROJECT_KEY", "QSYSCLOUD").strip()

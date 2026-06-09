@@ -11,9 +11,10 @@ The module is intentionally procedural/functional and environment-driven.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
-import sqlite3
+import argparse
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -27,8 +28,6 @@ from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
 from urllib3.util.retry import Retry
 
-from config_utils import get_database_path
-
 urllib3.disable_warnings()
 
 load_dotenv(override=True)
@@ -36,6 +35,8 @@ load_dotenv(override=True)
 ATLASSIAN_URL: str = os.getenv("ATLASSIAN_URL", "").rstrip("/")
 ATLASSIAN_EMAIL: str = os.getenv("ATLASSIAN_EMAIL", "")
 ATLASSIAN_TOKEN: str = os.getenv("ATLASSIAN_TOKEN", "")
+
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_SECONDS: float = 10.0
 DEFAULT_PAGE_SIZE: int = 50
@@ -126,6 +127,56 @@ def _get_jira_search_path() -> str:
     if not raw_path.startswith("/"):
         return f"/{raw_path}"
     return raw_path
+
+
+def _diagnose_search_endpoint() -> dict[str, Any]:
+    """Probe Jira instance to find working search endpoint.
+    
+    Returns a dict with 'working_path', 'tried_paths', and 'diagnostic_info'.
+    """
+    auth = _get_auth()
+    timeout_seconds = _get_timeout_seconds()
+    verify_tls = _get_verify_tls()
+    
+    # List of search endpoint paths to try (in priority order)
+    candidate_paths = [
+        "/rest/api/3/search",
+        "/rest/api/2/search",
+        "/rest/api/1.0/search",
+    ]
+    
+    tried_paths: list[dict[str, str]] = []
+    
+    for path in candidate_paths:
+        endpoint = f"{ATLASSIAN_URL}{path}"
+        try:
+            response = _jira_get(
+                endpoint=endpoint,
+                auth=auth,
+                params={"jql": "ORDER BY key", "maxResults": 1},
+                timeout_seconds=timeout_seconds,
+                verify_tls=verify_tls,
+            )
+            # If we get here, endpoint works
+            return {
+                "working_path": path,
+                "tried_paths": tried_paths,
+                "diagnostic_info": f"Search endpoint working at: {path}",
+            }
+        except requests.RequestException as exc:
+            error_code = str(exc)
+            tried_paths.append({
+                "path": path,
+                "error": error_code[:100],
+            })
+            LOGGER.debug("Endpoint %s failed: %s", path, error_code)
+    
+    return {
+        "working_path": None,
+        "tried_paths": tried_paths,
+        "diagnostic_info": f"No working search endpoint found. Tried: {[p['path'] for p in tried_paths]}",
+    }
+
 
 
 def _get_allowed_host_aliases() -> set[str]:
@@ -322,11 +373,22 @@ def _process_jira_query(
         if not board_id:
             raise ValueError("board_ticket_keys query requires board_id")
 
+        jql_filter = _build_board_jql()
+        
+        # If JQL filter is provided, use search API instead of agile API
+        # because agile API doesn't support JQL parameters
+        if jql_filter:
+            LOGGER.info(
+                "Board JQL filter detected. Using search API instead of agile API: %s",
+                jql_filter,
+            )
+            return _process_jira_query("search_ticket_keys", jql=jql_filter)
+        
+        # Use agile API for board without JQL
         endpoint = f"{ATLASSIAN_URL}/rest/agile/1.0/board/{board_id}/issue"
         issue_keys: list[str] = []
         seen_keys: set[str] = set()
         start_at = 0
-        jql_filter = _build_board_jql()
 
         while True:
             params: dict[str, Any] = {
@@ -334,8 +396,6 @@ def _process_jira_query(
                 "startAt": start_at,
                 "maxResults": DEFAULT_PAGE_SIZE,
             }
-            if jql_filter:
-                params["jql"] = jql_filter
 
             response = _jira_get(
                 endpoint=endpoint,
@@ -366,48 +426,78 @@ def _process_jira_query(
         if not jql:
             raise ValueError("search_ticket_keys query requires jql")
 
-        endpoint = f"{ATLASSIAN_URL}{_get_jira_search_path()}"
+        # Try configured path first, then fallback to alternatives
+        search_paths = [
+            _get_jira_search_path(),
+            "/rest/api/2/search",
+            "/rest/api/3/search",
+        ]
+        
+        # Remove duplicates while preserving order
+        search_paths = list(dict.fromkeys(search_paths))
+        
         issue_keys: list[str] = []
         seen_keys: set[str] = set()
-        start_at = 0
-        next_page_token = ""
+        last_error = None
+        working_endpoint = None
 
-        while True:
-            params: dict[str, Any] = {
-                "fields": "key",
-                "maxResults": DEFAULT_PAGE_SIZE,
-                "jql": jql,
-            }
-            if next_page_token:
-                params["nextPageToken"] = next_page_token
-            else:
-                params["startAt"] = start_at
+        for search_path in search_paths:
+            endpoint = f"{ATLASSIAN_URL}{search_path}"
+            issue_keys = []
+            seen_keys = set()
+            start_at = 0
+            next_page_token = ""
 
-            response = _jira_get(
-                endpoint=endpoint,
-                auth=auth,
-                params=params,
-                timeout_seconds=timeout_seconds,
-                verify_tls=verify_tls,
-            )
-            payload = response.json()
+            try:
+                while True:
+                    params: dict[str, Any] = {
+                        "fields": "key",
+                        "maxResults": DEFAULT_PAGE_SIZE,
+                        "jql": jql,
+                    }
+                    if next_page_token:
+                        params["nextPageToken"] = next_page_token
+                    else:
+                        params["startAt"] = start_at
 
-            issues = payload.get("issues", [])
-            for issue in issues:
-                issue_key = issue.get("key")
-                if issue_key and issue_key not in seen_keys:
-                    seen_keys.add(issue_key)
-                    issue_keys.append(issue_key)
+                    response = _jira_get(
+                        endpoint=endpoint,
+                        auth=auth,
+                        params=params,
+                        timeout_seconds=timeout_seconds,
+                        verify_tls=verify_tls,
+                    )
+                    payload = response.json()
 
-            next_page_token = str(payload.get("nextPageToken", "") or "").strip()
-            is_last = bool(payload.get("isLast", False))
-            total = _safe_int(payload.get("total"), None)
-            start_at += len(issues)
+                    issues = payload.get("issues", [])
+                    for issue in issues:
+                        issue_key = issue.get("key")
+                        if issue_key and issue_key not in seen_keys:
+                            seen_keys.add(issue_key)
+                            issue_keys.append(issue_key)
 
-            if next_page_token:
-                continue
-            if is_last or not issues or (total is not None and start_at >= total):
+                    next_page_token = str(payload.get("nextPageToken", "") or "").strip()
+                    is_last = bool(payload.get("isLast", False))
+                    total = _safe_int(payload.get("total"), None)
+                    start_at += len(issues)
+
+                    if next_page_token:
+                        continue
+                    if is_last or not issues or (total is not None and start_at >= total):
+                        break
+
+                # Success! Record which endpoint worked
+                working_endpoint = search_path
+                LOGGER.info("Search query succeeded with endpoint: %s", search_path)
                 break
+
+            except requests.RequestException as exc:
+                last_error = exc
+                LOGGER.debug("Search endpoint %s failed: %s. Trying next...", search_path, exc)
+                continue
+
+        if not working_endpoint and last_error:
+            raise last_error
 
         return issue_keys
 
@@ -1076,671 +1166,166 @@ def create_kanban_response_json_file(
     }
 
 
-def _open_sqlite_connection(db_path: str) -> sqlite3.Connection:
-    """Open sqlite connection and support URI-based in-memory databases."""
-    use_uri = db_path.startswith("file:")
-    return sqlite3.connect(db_path, uri=use_uri)
+def create_release_response_json_file(
+    output_file_path: str = "outputs/release_details_response.json",
+    project_key: str | None = None,
+) -> dict[str, Any]:
+    """Fetch Jira release details and save the full response as JSON.
 
+    Args:
+        output_file_path: Relative or absolute output JSON file path.
+        project_key: Optional Jira project key override. When omitted, uses
+            JIRA_PROJECT_KEY from config.
 
-def _to_json_text(value: Any) -> str:
-    """Serialize values to compact UTF-8-safe JSON text."""
-    return json.dumps(value if value is not None else {}, ensure_ascii=False)
-
-
-def _to_bool_int(value: Any) -> int | None:
-    """Convert truthy/falsey values into sqlite-friendly integer flags."""
-    if value is None:
-        return None
-    return 1 if bool(value) else 0
-
-
-def _ensure_sqlite_column(conn: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
-    """Add a column if missing so existing DB files can be upgraded in place."""
-    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    existing_columns = {str(row[1]) for row in rows}
-    if column_name in existing_columns:
-        return
-    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_sql}")
-
-
-def _init_jira_tables_with_connection(conn: sqlite3.Connection) -> None:
-    """Create Jira sync tables if missing."""
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS teams (
-            team_id TEXT PRIMARY KEY,
-            display_name TEXT,
-            description TEXT,
-            cloud_id TEXT,
-            organization_id TEXT,
-            state TEXT,
-            team_type TEXT,
-            is_verified INTEGER,
-            profile_url TEXT,
-            member_count INTEGER,
-            includes_you INTEGER,
-            team_json TEXT NOT NULL DEFAULT '{}',
-            updated_at TEXT NOT NULL DEFAULT ''
-        );
-
-        CREATE TABLE IF NOT EXISTS team_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            team_id TEXT,
-            account_id TEXT,
-            display_name TEXT,
-            email TEXT,
-            canonical_account_id TEXT,
-            account_status TEXT,
-            nickname TEXT,
-            picture TEXT,
-            zoneinfo TEXT,
-            locale TEXT,
-            org_id TEXT,
-            profile_url TEXT,
-            member_role TEXT,
-            member_state TEXT,
-            member_json TEXT NOT NULL DEFAULT '{}',
-            updated_at TEXT NOT NULL DEFAULT '',
-            UNIQUE(team_id, account_id)
-        );
-        """
-    )
-
-    # Migration path for older DB files created before expanded Jira sync fields.
-    _ensure_sqlite_column(conn, "teams", "organization_id", "organization_id TEXT")
-    _ensure_sqlite_column(conn, "teams", "state", "state TEXT")
-    _ensure_sqlite_column(conn, "teams", "team_type", "team_type TEXT")
-    _ensure_sqlite_column(conn, "teams", "is_verified", "is_verified INTEGER")
-    _ensure_sqlite_column(conn, "teams", "profile_url", "profile_url TEXT")
-    _ensure_sqlite_column(conn, "teams", "member_count", "member_count INTEGER")
-    _ensure_sqlite_column(conn, "teams", "includes_you", "includes_you INTEGER")
-    _ensure_sqlite_column(conn, "teams", "team_json", "team_json TEXT NOT NULL DEFAULT '{}' ")
-    _ensure_sqlite_column(conn, "teams", "updated_at", "updated_at TEXT NOT NULL DEFAULT ''")
-
-    _ensure_sqlite_column(conn, "team_members", "canonical_account_id", "canonical_account_id TEXT")
-    _ensure_sqlite_column(conn, "team_members", "account_status", "account_status TEXT")
-    _ensure_sqlite_column(conn, "team_members", "nickname", "nickname TEXT")
-    _ensure_sqlite_column(conn, "team_members", "picture", "picture TEXT")
-    _ensure_sqlite_column(conn, "team_members", "zoneinfo", "zoneinfo TEXT")
-    _ensure_sqlite_column(conn, "team_members", "locale", "locale TEXT")
-    _ensure_sqlite_column(conn, "team_members", "org_id", "org_id TEXT")
-    _ensure_sqlite_column(conn, "team_members", "profile_url", "profile_url TEXT")
-    _ensure_sqlite_column(conn, "team_members", "member_role", "member_role TEXT")
-    _ensure_sqlite_column(conn, "team_members", "member_state", "member_state TEXT")
-    _ensure_sqlite_column(conn, "team_members", "member_json", "member_json TEXT NOT NULL DEFAULT '{}' ")
-    _ensure_sqlite_column(conn, "team_members", "updated_at", "updated_at TEXT NOT NULL DEFAULT ''")
-
-
-def _extract_team_nodes(teams_data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract team nodes list from expected Jira GraphQL response paths."""
-    data = teams_data.get("data") if isinstance(teams_data, dict) else None
-    if not isinstance(data, dict):
-        raise ValueError("Jira GraphQL response missing 'data' object")
-
-    team_roots: list[dict[str, Any]] = []
-    for key in ("team", "teams"):
-        value = data.get(key)
-        if isinstance(value, dict):
-            team_roots.append(value)
-
-    # Include data itself to support flat response shapes from gateway variants.
-    team_roots.append(data)
-
-    for root in team_roots:
-        for key in ("teamSearchV2", "teamSearch", "teams"):
-            search_node = root.get(key)
-            if isinstance(search_node, dict) and isinstance(search_node.get("nodes"), list):
-                nodes_raw = search_node.get("nodes")
-                nodes: list[Any] = nodes_raw if isinstance(nodes_raw, list) else []
-                extracted: list[dict[str, Any]] = []
-                for node in nodes:
-                    if not isinstance(node, dict):
-                        continue
-                    team_payload = node.get("team")
-                    if isinstance(team_payload, dict):
-                        merged_team_payload = dict(team_payload)
-                        if "memberCount" in node:
-                            merged_team_payload["memberCount"] = node.get("memberCount")
-                        if "includesYou" in node:
-                            merged_team_payload["includesYou"] = node.get("includesYou")
-                        extracted.append(merged_team_payload)
-                        continue
-                    extracted.append(node)
-                return extracted
-        if isinstance(root.get("nodes"), list):
-            nodes_raw = root.get("nodes")
-            nodes: list[Any] = nodes_raw if isinstance(nodes_raw, list) else []
-            return [node for node in nodes if isinstance(node, dict)]
-
-    raise ValueError("Jira GraphQL response missing teams nodes")
-
-
-def _extract_member_nodes(team_node: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract member nodes from one team node."""
-    members = team_node.get("members")
-    if isinstance(members, list):
-        return [node for node in members if isinstance(node, dict)]
-    if not isinstance(members, dict):
-        return []
-
-    nodes = members.get("nodes")
-    if isinstance(nodes, list):
-        extracted: list[dict[str, Any]] = []
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            member_payload = node.get("member")
-            if isinstance(member_payload, dict):
-                merged_member_payload = dict(member_payload)
-                if "role" in node:
-                    merged_member_payload["memberRole"] = node.get("role")
-                if "state" in node:
-                    merged_member_payload["memberState"] = node.get("state")
-                extracted.append(merged_member_payload)
-                continue
-            extracted.append(node)
-        return extracted
-
-    edges = members.get("edges")
-    if isinstance(edges, list):
-        extracted: list[dict[str, Any]] = []
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            node = edge.get("node")
-            if isinstance(node, dict):
-                extracted.append(node)
-        return extracted
-
-    return []
-
-
-def _resolve_org_ari(domain: str, cloud_id: str, email: str, api_token: str) -> str:
-    """Resolve organization ARI needed by teamSearchV2."""
-    endpoint = f"https://{domain}/gateway/api/graphql"
-    query = """
-    query TenantCtx($cloudIds: [ID!]) {
-      tenantContexts(cloudIds: $cloudIds) {
-        orgId
-      }
-    }
+    Returns:
+        A dictionary containing the output path, release count, and full
+        response payload.
     """
-
-    response = requests.post(
-        endpoint,
-        auth=HTTPBasicAuth(email, api_token),
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        json={"query": query, "variables": {"cloudIds": [cloud_id]}},
-        timeout=_get_timeout_seconds(),
-        verify=_get_verify_tls(),
-    )
-    response.raise_for_status()
-
-    payload = response.json()
-    org_id = (
-        payload.get("data", {})
-        .get("tenantContexts", [{}])[0]
-        .get("orgId", "")
-        if isinstance(payload, dict)
-        else ""
-    )
-    normalized_org_id = str(org_id).strip()
-    if not normalized_org_id:
-        return ""
-
-    if normalized_org_id.startswith("ari:"):
-        return normalized_org_id
-    return f"ari:cloud:platform::org/{normalized_org_id}"
-
-
-def _build_jira_profile_url(domain: str, account_id: str) -> str:
-    """Build a Jira user profile URL from a site domain and account id."""
-    normalized_domain = str(domain).strip().replace("https://", "").replace("http://", "").strip("/")
-    normalized_account_id = str(account_id).strip()
-    if not normalized_domain or not normalized_account_id:
-        return ""
-    return f"https://{normalized_domain}/jira/people/{normalized_account_id}"
-
-
-def _enrich_teams_data_with_profile_urls(teams_data: dict[str, Any], domain: str) -> dict[str, Any]:
-    """Return a deep-copied teams payload with profile URLs added for each member."""
-    if not isinstance(teams_data, dict):
-        return teams_data
-
-    enriched = json.loads(json.dumps(teams_data))
-    for team_node in _extract_team_nodes(enriched):
-        for member_node in _extract_member_nodes(team_node):
-            account_id = str(member_node.get("accountId") or member_node.get("id") or "").strip()
-            profile_url = _build_jira_profile_url(domain, account_id)
-            if profile_url:
-                member_node["profile_url"] = profile_url
-    return enriched
-
-
-def init_jira_tables(db_path: str) -> None:
-    """Initialize Jira teams and member tracking tables."""
-    if not str(db_path).strip():
-        raise ValueError("db_path is required")
-
-    with _open_sqlite_connection(db_path) as conn:
-        _init_jira_tables_with_connection(conn)
-        conn.commit()
-
-
-def fetch_jira_teams_and_members(
-    domain: str,
-    email: str,
-    api_token: str,
-    cloud_id: str,
-    tql_query: str,
-) -> dict[str, Any]:
-    """Fetch Jira teams and nested members using GraphQL gateway."""
-    normalized_domain = str(domain).strip().replace("https://", "").replace("http://", "").strip("/")
-    if not normalized_domain:
-        raise ValueError("domain is required")
-    if not str(email).strip():
-        raise ValueError("email is required")
-    if not str(api_token).strip():
-        raise ValueError("api_token is required")
-    if not str(cloud_id).strip():
-        raise ValueError("cloud_id is required")
-
-    endpoint = f"https://{normalized_domain}/gateway/api/graphql"
-    resolved_org_ari = ""
-    try:
-        resolved_org_ari = _resolve_org_ari(
-            domain=normalized_domain,
-            cloud_id=cloud_id,
-            email=email,
-            api_token=api_token,
-        )
-    except requests.RequestException:
-        resolved_org_ari = ""
-
-    query_attempts: list[dict[str, Any]] = [
-        {
-            "query": """
-            query TeamSearchClassic($cloudId: ID!, $tql: String!) {
-              team {
-                teams(cloudId: $cloudId, first: 100, query: $tql) {
-                  nodes {
-                    teamId
-                    id
-                    displayName
-                    description
-                    members(first: 200) {
-                      nodes {
-                        member {
-                          ... on AtlassianAccountUser {
-                            accountId
-                            displayName
-                            name
-                            email
-                            emailAddress
-                          }
-                        }
-                        accountId
-                        displayName
-                        email
-                        emailAddress
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            """,
-            "variables": {
-                "cloudId": cloud_id,
-                "tql": tql_query,
-            },
-        },
-                {
-                        "query": """
-                        query TeamSearchV2OrgSite($orgId: ID!, $siteId: String!, $query: String) {
-                            team {
-                                teamSearchV2(organizationId: $orgId, siteId: $siteId, filter: {query: $query}, first: 100) {
-                                    nodes {
-                                        team {
-                                            id
-                                            displayName
-                                            description
-                                            members(first: 200) {
-                                                nodes {
-                                                    member {
-                                                        ... on AtlassianAccountUser {
-                                                            accountId
-                                                            name
-                                                            email
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        """,
-                        "variables": {
-                                "orgId": resolved_org_ari,
-                                "siteId": cloud_id,
-                                "query": tql_query,
-                        },
-                        "skip": not resolved_org_ari,
-                },
-        {
-            "query": """
-            query TeamSearchV2($cloudId: ID!, $tql: String!) {
-              team {
-                teamSearchV2(cloudId: $cloudId, tql: $tql, first: 100) {
-                  nodes {
-                    teamId
-                    id
-                    displayName
-                    description
-                    members(first: 200) {
-                      nodes {
-                        accountId
-                        displayName
-                        email
-                        emailAddress
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            """,
-            "variables": {
-                "cloudId": cloud_id,
-                "tql": tql_query,
-            },
-        },
-    ]
-
-    errors: list[Any] = []
-    for attempt in query_attempts:
-        if attempt.get("skip"):
-            continue
-
-        response = requests.post(
-            endpoint,
-            auth=HTTPBasicAuth(email, api_token),
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-            json=attempt,
-            timeout=_get_timeout_seconds(),
-            verify=_get_verify_tls(),
-        )
-        response.raise_for_status()
-
-        payload = response.json()
-        if not isinstance(payload, dict):
-            errors.append("Jira GraphQL response is not a dictionary")
-            continue
-
-        payload_errors = payload.get("errors")
-        if payload_errors:
-            errors.append(payload_errors)
-            continue
-
-        try:
-            _extract_team_nodes(payload)
-            return payload
-        except ValueError as exc:
-            errors.append(str(exc))
-
-    raise ValueError(f"Jira GraphQL returned errors: {errors}")
-
-
-def save_jira_data_to_db(db_path: str, teams_data: dict[str, Any], cloud_id: str) -> dict[str, int]:
-    """Persist Jira team/member GraphQL payload into sqlite with upserts."""
-    if not str(db_path).strip():
-        raise ValueError("db_path is required")
-    if not isinstance(teams_data, dict):
-        raise ValueError("teams_data must be a dictionary")
-    if not str(cloud_id).strip():
-        raise ValueError("cloud_id is required")
-
-    team_nodes = _extract_team_nodes(teams_data)
-    team_upserts = 0
-    member_upserts = 0
-    updated_at_iso = datetime.now(timezone.utc).isoformat()
-    fallback_domain = _resolve_domain_from_atlassian_url()
-
-    with _open_sqlite_connection(db_path) as conn:
-        _init_jira_tables_with_connection(conn)
-
-        for team_node in team_nodes:
-            team_id = str(team_node.get("teamId") or team_node.get("id") or "").strip()
-            if not team_id:
-                continue
-
-            display_name = str(team_node.get("displayName") or "").strip()
-            description = str(team_node.get("description") or "").strip()
-
-            conn.execute(
-                """
-                INSERT INTO teams (
-                    team_id, display_name, description, cloud_id,
-                    organization_id, state, team_type, is_verified,
-                    profile_url, member_count, includes_you, team_json, updated_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(team_id) DO UPDATE SET
-                    display_name=excluded.display_name,
-                    description=excluded.description,
-                    cloud_id=excluded.cloud_id,
-                    organization_id=excluded.organization_id,
-                    state=excluded.state,
-                    team_type=excluded.team_type,
-                    is_verified=excluded.is_verified,
-                    profile_url=excluded.profile_url,
-                    member_count=excluded.member_count,
-                    includes_you=excluded.includes_you,
-                    team_json=excluded.team_json,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    team_id,
-                    display_name,
-                    description,
-                    cloud_id,
-                    str(team_node.get("organizationId") or "").strip(),
-                    str(team_node.get("state") or "").strip(),
-                    str(team_node.get("type") or "").strip(),
-                    _to_bool_int(team_node.get("isVerified")),
-                    str(team_node.get("profileUrl") or "").strip(),
-                    _safe_int(team_node.get("memberCount"), None),
-                    _to_bool_int(team_node.get("includesYou")),
-                    _to_json_text(team_node),
-                    updated_at_iso,
-                ),
-            )
-            team_upserts += 1
-
-            for member_node in _extract_member_nodes(team_node):
-                account_id = str(member_node.get("accountId") or member_node.get("id") or "").strip()
-                if not account_id:
-                    continue
-
-                member_display_name = str(member_node.get("displayName") or member_node.get("name") or "").strip()
-                member_email = str(member_node.get("email") or member_node.get("emailAddress") or "").strip()
-                member_profile_url = str(member_node.get("profile_url") or "").strip()
-                if not member_profile_url and fallback_domain:
-                    member_profile_url = _build_jira_profile_url(fallback_domain, account_id)
-
-                conn.execute(
-                    """
-                    INSERT INTO team_members (
-                        team_id, account_id, display_name, email,
-                        canonical_account_id, account_status, nickname, picture,
-                        zoneinfo, locale, org_id, profile_url, member_role, member_state,
-                        member_json, updated_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(team_id, account_id) DO UPDATE SET
-                        display_name=excluded.display_name,
-                        email=excluded.email,
-                        canonical_account_id=excluded.canonical_account_id,
-                        account_status=excluded.account_status,
-                        nickname=excluded.nickname,
-                        picture=excluded.picture,
-                        zoneinfo=excluded.zoneinfo,
-                        locale=excluded.locale,
-                        org_id=excluded.org_id,
-                        profile_url=excluded.profile_url,
-                        member_role=excluded.member_role,
-                        member_state=excluded.member_state,
-                        member_json=excluded.member_json,
-                        updated_at=excluded.updated_at
-                    """,
-                    (
-                        team_id,
-                        account_id,
-                        member_display_name,
-                        member_email,
-                        str(member_node.get("canonicalAccountId") or "").strip(),
-                        str(member_node.get("accountStatus") or "").strip(),
-                        str(member_node.get("nickname") or "").strip(),
-                        str(member_node.get("picture") or "").strip(),
-                        str(member_node.get("zoneinfo") or "").strip(),
-                        str(member_node.get("locale") or "").strip(),
-                        str(member_node.get("orgId") or "").strip(),
-                        member_profile_url,
-                        str(member_node.get("memberRole") or member_node.get("role") or "").strip(),
-                        str(member_node.get("memberState") or member_node.get("state") or "").strip(),
-                        _to_json_text(member_node),
-                        updated_at_iso,
-                    ),
-                )
-                member_upserts += 1
-
-        conn.commit()
-
-    return {
-        "teams_upserted": team_upserts,
-        "members_upserted": member_upserts,
-    }
-
-
-def sync_jira_teams_pipeline(
-    domain: str,
-    email: str,
-    api_token: str,
-    cloud_id: str,
-    tql_query: str,
-    db_path: str,
-) -> dict[str, int]:
-    """Run Jira team synchronization pipeline end-to-end."""
-    init_jira_tables(db_path)
-    teams_data = fetch_jira_teams_and_members(
-        domain=domain,
-        email=email,
-        api_token=api_token,
-        cloud_id=cloud_id,
-        tql_query=tql_query,
-    )
-    enriched_teams_data = _enrich_teams_data_with_profile_urls(teams_data, domain)
-    return save_jira_data_to_db(db_path=db_path, teams_data=enriched_teams_data, cloud_id=cloud_id)
-
-
-def _resolve_domain_from_atlassian_url() -> str:
-    """Resolve Atlassian domain from ATLASSIAN_URL or domain environment fallback."""
-    parsed = urlparse(ATLASSIAN_URL)
-    if parsed.netloc:
-        return parsed.netloc
-    return os.getenv("ATLASSIAN_DOMAIN", "").strip()
-
-
-def _resolve_cloud_id(domain: str) -> str:
-    """Resolve cloud id from env or Atlassian tenant info endpoint."""
-    env_cloud_id = os.getenv("ATLASSIAN_CLOUD_ID", "").strip()
-    if env_cloud_id:
-        return env_cloud_id
-
-    normalized_domain = str(domain).strip().replace("https://", "").replace("http://", "").strip("/")
-    if not normalized_domain:
-        return ""
-
-    endpoint = f"https://{normalized_domain}/_edge/tenant_info"
-    response = requests.get(
-        endpoint,
-        headers={"Accept": "application/json"},
-        timeout=_get_timeout_seconds(),
-        verify=_get_verify_tls(),
-    )
-    response.raise_for_status()
-
-    payload = response.json()
-    if not isinstance(payload, dict):
-        return ""
-
-    cloud_id = str(payload.get("cloudId") or payload.get("cloud_id") or "").strip()
-    return cloud_id
-
-
-def create_jira_teams_response_json_file(
-    output_file_path: str = "jira_teams_and_members_response.json",
-    domain: str | None = None,
-    email: str | None = None,
-    api_token: str | None = None,
-    cloud_id: str | None = None,
-    tql_query: str | None = None,
-    db_path: str | None = None,
-) -> dict[str, Any]:
-    """Fetch Jira team/member payload, persist it, and save full JSON response to disk."""
-    resolved_domain = (domain or _resolve_domain_from_atlassian_url()).strip()
-    resolved_email = (email or ATLASSIAN_EMAIL).strip()
-    resolved_api_token = (api_token or ATLASSIAN_TOKEN).strip()
-    resolved_cloud_id = (cloud_id or _resolve_cloud_id(resolved_domain)).strip()
-    resolved_tql_query = (tql_query or os.getenv("ATLASSIAN_TEAM_TQL_QUERY", "")).strip()
-    resolved_db_path = (db_path or get_database_path()).strip()
-
-    if not resolved_domain:
-        raise ValueError("Missing Jira team sync input: domain")
-    if not resolved_email:
-        raise ValueError("Missing Jira team sync input: email")
-    if not resolved_api_token:
-        raise ValueError("Missing Jira team sync input: api_token")
-    if not resolved_cloud_id:
-        raise ValueError("Missing Jira team sync input: cloud_id")
-
-    teams_data = fetch_jira_teams_and_members(
-        domain=resolved_domain,
-        email=resolved_email,
-        api_token=resolved_api_token,
-        cloud_id=resolved_cloud_id,
-        tql_query=resolved_tql_query,
-    )
-    enriched_teams_data = _enrich_teams_data_with_profile_urls(teams_data, resolved_domain)
-    sync_counts = save_jira_data_to_db(
-        db_path=resolved_db_path,
-        teams_data=enriched_teams_data,
-        cloud_id=resolved_cloud_id,
-    )
-
-    output_payload = {
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "domain": resolved_domain,
-        "cloud_id": resolved_cloud_id,
-        "tql_query": resolved_tql_query,
-        "sync_counts": sync_counts,
-        "teams_data": enriched_teams_data,
-    }
-
+    response = fetch_release_details(project_key=project_key)
     absolute_path = os.path.abspath(output_file_path)
+
     with open(absolute_path, "w", encoding="utf-8") as output_file:
-        json.dump(output_payload, output_file, indent=2)
+        json.dump(response, output_file, indent=2)
 
     return {
         "output_path": absolute_path,
-        "sync_counts": sync_counts,
-        "response": output_payload,
+        "release_count": len(response.get("releases", [])),
+        "response": response,
+    }
+
+
+
+def fetch_release_details(project_key: str | None = None) -> dict[str, Any]:
+    """Fetch Jira release/version details for a project.
+    
+    Args:
+        project_key: Jira project key (e.g., "QSYSCLOUD"). If None, uses JIRA_PROJECT_KEY
+                    from config.
+    
+    Returns:
+        Dictionary containing fetched_at timestamp, project_key, releases list, and
+        any error details.
+    
+    Raises:
+        ValueError: If project key is not provided and cannot be resolved from config.
+        requests.RequestException: If Jira API call fails.
+    """
+    from config_utils import get_jira_project_key
+    
+    # Resolve project key from parameter or config
+    resolved_project_key = (project_key or "").strip() or get_jira_project_key()
+    if not resolved_project_key:
+        raise ValueError(
+            "project_key not provided and JIRA_PROJECT_KEY not configured. "
+            "Set JIRA_PROJECT_KEY in .env."
+        )
+    
+    auth = _get_auth()
+    timeout_seconds = _get_timeout_seconds()
+    verify_tls = _get_verify_tls()
+    
+    # Try multiple endpoint paths for versions/releases
+    version_paths = [
+        f"/rest/api/3/projects/{resolved_project_key}/versions",
+        f"/rest/api/2/project/{resolved_project_key}/versions",
+        f"/rest/api/3/projects/{resolved_project_key}",  # Fallback to full project which includes versions
+    ]
+    
+    last_error = None
+    working_endpoint = None
+
+    for endpoint_path in version_paths:
+        endpoint = f"{ATLASSIAN_URL}{endpoint_path}"
+        
+        try:
+            response = _jira_get(
+                endpoint=endpoint,
+                auth=auth,
+                params={},
+                timeout_seconds=timeout_seconds,
+                verify_tls=verify_tls,
+            )
+            payload = response.json()
+            
+            # Extract versions from different response formats
+            if isinstance(payload, list):
+                # Direct list of versions
+                versions = payload
+            elif "versions" in payload:
+                # Nested in project response
+                versions = payload.get("versions", [])
+            elif "values" in payload:
+                # Paginated response
+                versions = payload.get("values", [])
+            else:
+                # Might be full project object
+                versions = payload.get("versions", []) if isinstance(payload, dict) else []
+            
+            # Sort by release date (most recent first) if available
+            sorted_versions = sorted(
+                versions,
+                key=lambda v: v.get("releaseDate", ""),
+                reverse=True,
+            )
+            
+            working_endpoint = endpoint_path
+            LOGGER.info("Release query succeeded with endpoint: %s", endpoint_path)
+            
+            return {
+                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "project_key": resolved_project_key,
+                "releases": sorted_versions,
+                "error": None,
+                "endpoint_used": endpoint_path,
+            }
+        
+        except requests.RequestException as exc:
+            last_error = exc
+            error_msg = str(exc)
+            LOGGER.debug("Release endpoint %s failed: %s. Trying next...", endpoint_path, error_msg)
+            continue
+    
+    # All endpoints failed
+    if last_error:
+        error_msg = str(last_error)
+        diagnostic = ""
+        if "404" in error_msg:
+            diagnostic = (
+                "Endpoint not found. Tried: " + 
+                ", ".join(version_paths) +
+                " Verify: (1) Project key is correct, (2) Project exists and is accessible, (3) User has permission."
+            )
+        elif "401" in error_msg or "403" in error_msg:
+            diagnostic = "Authentication or permission issue. Check ATLASSIAN_EMAIL and ATLASSIAN_TOKEN."
+        
+        LOGGER.error(
+            "Failed to fetch releases for project '%s' from any endpoint: %s",
+            resolved_project_key,
+            error_msg,
+        )
+        
+        return {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "project_key": resolved_project_key,
+            "releases": [],
+            "error": error_msg,
+            "diagnostic_hint": diagnostic if diagnostic else None,
+            "endpoints_tried": version_paths,
+        }
+    
+    # Shouldn't reach here
+    return {
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "project_key": resolved_project_key,
+        "releases": [],
+        "error": "Unknown error fetching releases",
+        "endpoints_tried": version_paths,
     }
 
 
 if __name__ == "__main__":
+    argparse.ArgumentParser(description="Central Dashboard service runner").parse_args()
+
     runtime_inputs = _get_runtime_inputs()
     runtime_warnings = _collect_runtime_warnings(runtime_inputs)
     tls_policy = _apply_tls_warning_suppression_policy()
@@ -1803,14 +1388,40 @@ if __name__ == "__main__":
         )
     )
 
-    print("\nRunning Jira teams and members extraction...")
-    try:
-        teams_saved = create_jira_teams_response_json_file(
-            output_file_path="outputs/jira_teams_and_members_response.json"
-        )
-        team_counts = teams_saved.get("sync_counts", {}) if isinstance(teams_saved, dict) else {}
-        print(f"- Jira teams JSON file: {teams_saved.get('output_path', '')}")
-        print(f"- Teams upserted: {team_counts.get('teams_upserted', 0)}")
-        print(f"- Members upserted: {team_counts.get('members_upserted', 0)}")
-    except (ValueError, requests.RequestException) as exc:
-        print(f"[jira-team-sync] skipped: {exc}")
+    print("\nTeam metadata source: inputs/team_details.csv")
+
+    print("\n" + "="*80)
+    print("Running Jira release details extraction...")
+    release_saved = create_release_response_json_file(
+        output_file_path="outputs/release_details_response.json"
+    )
+    release_data = release_saved["response"]
+
+    print(f"- Response JSON file: {release_saved['output_path']}")
+
+    if release_data.get("error"):
+        print(f"\n[Error] {release_data['error']}")
+        if release_data.get("diagnostic_hint"):
+            print(f"[Hint] {release_data['diagnostic_hint']}")
+        if release_data.get("endpoints_tried"):
+            print(f"[Endpoints tried] {', '.join(release_data['endpoints_tried'])}")
+    else:
+        endpoint_used = release_data.get("endpoint_used", "N/A")
+        print(f"- Endpoint used: {endpoint_used}")
+        print(f"\nProject: {release_data.get('project_key')}")
+        print(f"Releases found: {release_saved['release_count']}")
+
+        if release_data.get("releases"):
+            print("\nRelease Summary (sorted by release date, most recent first):")
+            for i, release in enumerate(release_data.get("releases", [])[:10], 1):
+                release_name = release.get("name", "N/A")
+                release_date = release.get("releaseDate", "N/A")
+                released = release.get("released", False)
+                status = "Released" if released else "Unreleased"
+                print(f"  {i}. {release_name} ({release_date}) - {status}")
+            
+            if len(release_data.get("releases", [])) > 10:
+                print(f"  ... and {len(release_data.get('releases', [])) - 10} more")
+
+    print("\n" + "="*80)
+
