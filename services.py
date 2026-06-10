@@ -426,11 +426,13 @@ def _process_jira_query(
         if not jql:
             raise ValueError("search_ticket_keys query requires jql")
 
-        # Try configured path first, then fallback to alternatives
+        # Try configured path first, then fallback to alternatives.
+        # Some Jira tenants only support /rest/api/3/search/jql and reject /rest/api/3/search.
         search_paths = [
             _get_jira_search_path(),
-            "/rest/api/2/search",
+            "/rest/api/3/search/jql",
             "/rest/api/3/search",
+            "/rest/api/2/search",
         ]
         
         # Remove duplicates while preserving order
@@ -537,6 +539,7 @@ def _process_jira_query(
             "summary": issue_fields.get("summary", ""),
             "status": status.get("name", ""),
             "assignee": assignee.get("displayName", "Unassigned") if isinstance(assignee, dict) else "Unassigned",
+            "components": issue_fields.get("components", []),
             "priority": priority.get("name", ""),
             "issue_type": issue_type.get("name", ""),
             "updated": issue_fields.get("updated", ""),
@@ -1013,6 +1016,7 @@ def get_ticket_details_from_kanban_links(kanban_links: str | list[str]) -> dict[
     normalized_links = _normalize_kanban_links(kanban_links)
     fields = [
         "summary", "status", "assignee", "priority", "issuetype", "updated", "issuelinks",
+        "components",
         "reporter", "created", "duedate", "customfield_10006", "customfield_10016",
         "timeoriginalestimate", "timeestimate", "timespent", "resolutiondate"
     ]
@@ -1388,7 +1392,7 @@ if __name__ == "__main__":
         )
     )
 
-    print("\nTeam metadata source: inputs/team_details.csv")
+    print("\nTeam metadata source: inputs/team_details.json (or inputs/team_details.csv fallback)")
 
     print("\n" + "="*80)
     print("Running Jira release details extraction...")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import re
 import sqlite3
@@ -13,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlparse
 
-from config_utils import get_database_path
+from config_utils import get_database_path, get_team_dropdown_keywords, get_team_visibility_keywords
 
 TRACKED_HISTORY_FIELDS = [
     "status",
@@ -27,11 +26,24 @@ TRACKED_HISTORY_FIELDS = [
 
 DONE_STATUS_KEYS = {"done", "closed", "resolved"}
 IN_PROGRESS_STATUS_KEYS = {"in progress", "in-progress", "in_review", "in review", "testing"}
-TEAM_DETAILS_CSV_PATH = Path(__file__).resolve().parent / "inputs" / "team_details.csv"
+TEAM_DETAILS_JSON_PATH = Path(__file__).resolve().parent / "inputs" / "team_details.json"
+UNMAPPED_TEAM_OPTION = "Unmapped Team"
+
+# Fallback aliases for Jira component labels that do not directly match team names.
+DEFAULT_COMPONENT_TEAM_ALIASES: dict[str, list[str]] = {
+    "reflect directory": ["Reflect Subdirectory"],
+    "reflect infra": ["Infrastructure Team"],
+    "cloud services": ["Infrastructure Team"],
+    "cloud secops": ["Infrastructure Team"],
+}
 
 
 def _normalize_team_text(value: str) -> str:
     return str(value or "").strip().casefold()
+
+
+def _canonical_team_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _normalize_team_text(value))
 
 
 def _team_id_from_name(team_name: str) -> str:
@@ -39,69 +51,62 @@ def _team_id_from_name(team_name: str) -> str:
     return slug or "unnamed-team"
 
 
-def _load_team_roster_from_csv() -> list[dict[str, Any]]:
-    """Load team roster from inputs/team_details.csv.
-
-    CSV conventions handled:
-    - Empty rows may separate team blocks.
-    - Team header row may be a single populated cell (first column only).
-    - Repeated Name/Role/Skillset/Location/Contractor/Notes header rows are ignored.
+def _load_team_roster_from_json() -> list[dict[str, Any]]:
+    """Load team roster from inputs/team_details.json.
+    
+    JSON structure is member-centric with nested teams array.
+    Transform it to team-centric format (same as CSV output).
     """
-    if not TEAM_DETAILS_CSV_PATH.exists():
+    if not TEAM_DETAILS_JSON_PATH.exists():
         return []
 
-    teams: list[dict[str, Any]] = []
-    current_team: dict[str, Any] | None = None
-    was_last_row_empty = True
-
-    with TEAM_DETAILS_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.reader(handle)
-        for raw_row in reader:
-            row = [str(cell or "").strip() for cell in raw_row]
-            while len(row) < 6:
-                row.append("")
-            if not any(row):
-                was_last_row_empty = True
+    try:
+        with TEAM_DETAILS_JSON_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (json.JSONDecodeError, IOError):
+        return []
+    
+    members_list = data.get("members", [])
+    teams_dict: dict[str, dict[str, Any]] = {}
+    
+    # Transform member-centric JSON to team-centric format
+    for member in members_list:
+        member_name = member.get("name", "")
+        if not member_name:
+            continue
+        
+        member_teams = member.get("teams", [])
+        for team_info in member_teams:
+            team_name = team_info.get("team", "")
+            if not team_name:
                 continue
-
-            first = row[0]
-            has_other_cells = any(cell for cell in row[1:])
-
-            if first.casefold() == "name":
-                was_last_row_empty = False
-                continue
-
-            if first and not has_other_cells and was_last_row_empty:
-                current_team = {
-                    "team_id": _team_id_from_name(first),
-                    "team_name": first,
+            
+            team_id = _team_id_from_name(team_name)
+            
+            # Initialize team if not seen before
+            if team_id not in teams_dict:
+                teams_dict[team_id] = {
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "pod": team_info.get("pod", ""),
                     "description": "",
                     "members": [],
                 }
-                teams.append(current_team)
-                was_last_row_empty = False
-                continue
-
-            was_last_row_empty = False
-            if current_team is None:
-                continue
-
-            member_name = first
-            if not member_name:
-                continue
-
-            current_team["members"].append(
-                {
-                    "display_name": member_name,
-                    "role": row[1],
-                    "skillset": row[2],
-                    "location": row[3],
-                    "contractor": row[4],
-                    "notes": row[5],
-                }
-            )
-
-    # De-duplicate teams by normalized name while preserving original order.
+            
+            # Add member to team
+            teams_dict[team_id]["members"].append({
+                "display_name": member_name,
+                "role": team_info.get("role") or "",
+                "skillset": member.get("skillset") or "",
+                "location": member.get("location") or "",
+                "contractor": member.get("contractor") or "",
+                "notes": member.get("notes") or "",
+            })
+    
+    # Convert to list and deduplicate
+    teams = list(teams_dict.values())
+    
+    # De-duplicate by normalized team name
     deduped: list[dict[str, Any]] = []
     seen_names: set[str] = set()
     for team in teams:
@@ -110,8 +115,55 @@ def _load_team_roster_from_csv() -> list[dict[str, Any]]:
             continue
         seen_names.add(normalized_name)
         deduped.append(team)
-
+    
     return deduped
+
+
+def _load_team_roster_source() -> list[dict[str, Any]]:
+    """Load team roster from inputs/team_details.json."""
+    return _load_team_roster_from_json()
+
+
+def _load_component_team_aliases() -> dict[str, list[str]]:
+    """Return normalized/canonical component name aliases mapped to team names."""
+    aliases: dict[str, list[str]] = {}
+
+    # Seed with built-in aliases first.
+    for component_name, team_names in DEFAULT_COMPONENT_TEAM_ALIASES.items():
+        for key in (_normalize_team_text(component_name), _canonical_team_text(component_name)):
+            if not key:
+                continue
+            aliases.setdefault(key, [])
+            for team_name in team_names:
+                if team_name not in aliases[key]:
+                    aliases[key].append(team_name)
+
+    if not TEAM_DETAILS_JSON_PATH.exists():
+        return aliases
+
+    try:
+        with TEAM_DETAILS_JSON_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+    component_rows = data.get("components", []) if isinstance(data, dict) else []
+    for row in component_rows:
+        if not isinstance(row, dict):
+            continue
+        component_name = str(row.get("name") or "").strip()
+        mapped_team_name = str(row.get("team") or "").strip()
+        if not component_name or not mapped_team_name:
+            continue
+        for key in (_normalize_team_text(component_name), _canonical_team_text(component_name)):
+            if not key:
+                continue
+            aliases.setdefault(key, [])
+            if mapped_team_name not in aliases[key]:
+                aliases[key].append(mapped_team_name)
+
+    return aliases
+
 
 
 KNOWN_ASSIGNEE_MAPPING = {
@@ -220,7 +272,188 @@ def _member_names_for_team_values(team_values: list[str]) -> list[str]:
     return sorted(list(matched_db_names))
 
 
+def _get_primary_team_for_assignee(assignee_name: str) -> tuple[str, str]:
+    """Return (team_id, team_name) for assignee's primary team, or ("", "") if not found.
+    
+    Primary team is the first team listed in the member's teams array in the JSON.
+    """
+    if not assignee_name or not str(assignee_name or "").strip():
+        return "", ""
+    
+    assignee_lower = str(assignee_name).strip().casefold()
+    
+    # Load JSON directly to find member's primary team
+    if not TEAM_DETAILS_JSON_PATH.exists():
+        return "", ""
+
+    try:
+        with TEAM_DETAILS_JSON_PATH.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (json.JSONDecodeError, IOError):
+        return "", ""
+    
+    members_list = data.get("members", [])
+    for member in members_list:
+        member_name = str(member.get("name") or "").strip()
+        if member_name.casefold() == assignee_lower:
+            # Found the member - get their first (primary) team
+            member_teams = member.get("teams", [])
+            if member_teams and isinstance(member_teams, list) and len(member_teams) > 0:
+                primary_team = member_teams[0]
+                team_name = str(primary_team.get("team") or "").strip()
+                if team_name:
+                    team_id = _team_id_from_name(team_name)
+                    return team_id, team_name
+            break
+    
+    return "", ""
+
+
+def _resolve_teams_from_components(components: Any) -> list[tuple[str, str]]:
+    """Resolve one or more teams from Jira component names."""
+    if not isinstance(components, list) or not components:
+        return []
+
+    component_names = [
+        str(component.get("name") or "") if isinstance(component, dict) else str(component or "")
+        for component in components
+    ]
+    component_names = [name.strip() for name in component_names if str(name or "").strip()]
+    if not component_names:
+        return []
+
+    roster = load_team_roster()
+    teams_by_exact_name = {
+        _normalize_team_text(team.get("team_name", "")): (
+            str(team.get("team_id") or "").strip(),
+            str(team.get("team_name") or "").strip(),
+        )
+        for team in roster
+        if str(team.get("team_id") or "").strip() and str(team.get("team_name") or "").strip()
+    }
+    teams_by_canonical_name = {
+        _canonical_team_text(team.get("team_name", "")): (
+            str(team.get("team_id") or "").strip(),
+            str(team.get("team_name") or "").strip(),
+        )
+        for team in roster
+        if str(team.get("team_id") or "").strip() and str(team.get("team_name") or "").strip()
+    }
+    aliases = _load_component_team_aliases()
+    resolved: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _append(team_id: str, team_name: str) -> None:
+        value = (str(team_id or "").strip(), str(team_name or "").strip())
+        if not value[0] or not value[1]:
+            return
+        if value in seen:
+            return
+        seen.add(value)
+        resolved.append(value)
+
+    for component_name in component_names:
+        normalized_component_name = _normalize_team_text(component_name)
+        canonical_component_name = _canonical_team_text(component_name)
+
+        alias_targets = aliases.get(normalized_component_name, []) + aliases.get(canonical_component_name, [])
+        for team_name in alias_targets:
+            matched = teams_by_exact_name.get(_normalize_team_text(team_name))
+            if matched:
+                _append(*matched)
+
+        matched = teams_by_exact_name.get(normalized_component_name)
+        if matched:
+            _append(*matched)
+            continue
+
+        matched = teams_by_canonical_name.get(canonical_component_name)
+        if matched:
+            _append(*matched)
+            continue
+
+        for team in roster:
+            team_name = str(team.get("team_name") or "").strip()
+            team_id = str(team.get("team_id") or "").strip()
+            if not team_name or not team_id:
+                continue
+            team_name_norm = _normalize_team_text(team_name)
+            team_name_canonical = _canonical_team_text(team_name)
+            if not team_name_norm:
+                continue
+            if (
+                normalized_component_name in team_name_norm
+                or team_name_norm in normalized_component_name
+                or canonical_component_name in team_name_canonical
+                or team_name_canonical in canonical_component_name
+            ):
+                _append(team_id, team_name)
+
+    return resolved
+
+
+def _get_team_from_components(components: Any) -> tuple[str, str]:
+    """Resolve primary team from Jira components, preserving backward compatibility."""
+    resolved = _resolve_teams_from_components(components)
+    return resolved[0] if resolved else ("", "")
+
+
+def _resolve_ticket_teams(ticket: dict[str, Any]) -> list[tuple[str, str]]:
+    """Resolve ticket teams with priority: all components first, assignee fallback second."""
+    from_components = _resolve_teams_from_components(ticket.get("components"))
+    if from_components:
+        return from_components
+
+    assignee_team_id, assignee_team_name = _get_primary_team_for_assignee(ticket.get("assignee", ""))
+    if assignee_team_id and assignee_team_name:
+        return [(assignee_team_id, assignee_team_name)]
+
+    return []
+
+
+def _resolve_ticket_team(ticket: dict[str, Any]) -> tuple[str, str]:
+    """Resolve primary ticket team with priority: components first, assignee fallback second."""
+    resolved = _resolve_ticket_teams(ticket)
+    return resolved[0] if resolved else ("", "")
+
+
+def find_misclassified_unmapped_tickets(tickets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return tickets marked unmapped that can actually be mapped from components.
+
+    Input tickets should contain: ticket_key, team_name/team_id (optional), and components.
+    """
+    misclassified: list[dict[str, Any]] = []
+    for ticket in tickets:
+        if not isinstance(ticket, dict):
+            continue
+        team_name = _normalize_team_text(ticket.get("team_name", ""))
+        team_id = _normalize_team_text(ticket.get("team_id", ""))
+        is_currently_unmapped = not team_name and not team_id
+        if team_name == _normalize_team_text(UNMAPPED_TEAM_OPTION):
+            is_currently_unmapped = True
+        if not is_currently_unmapped:
+            continue
+
+        resolved_teams = _resolve_teams_from_components(ticket.get("components"))
+        if not resolved_teams:
+            continue
+
+        misclassified.append(
+            {
+                "ticket_key": str(ticket.get("ticket_key") or "").strip(),
+                "resolved_teams": [
+                    {"team_id": team_id, "team_name": team_name}
+                    for team_id, team_name in resolved_teams
+                ],
+                "components": ticket.get("components") if isinstance(ticket.get("components"), list) else [],
+            }
+        )
+
+    return misclassified
+
+
 def _member_to_team_lookup() -> dict[str, dict[str, str]]:
+
     lookup: dict[str, dict[str, str]] = {}
     for team in load_team_roster():
         team_id = str(team.get("team_id") or "").strip()
@@ -360,6 +593,13 @@ def init_db() -> None:
             """
         )
         conn.commit()
+        
+        # Ensure team columns exist (for ticket ownership by team)
+        _ensure_column_exists(conn, "tickets_current", "team_id", "team_id TEXT")
+        _ensure_column_exists(conn, "tickets_current", "team_name", "team_name TEXT")
+        _ensure_column_exists(conn, "tickets_current", "team_ids_json", "team_ids_json TEXT")
+        _ensure_column_exists(conn, "tickets_current", "team_names_json", "team_names_json TEXT")
+        conn.commit()
 
 
 def _to_json(value: Any) -> str:
@@ -471,14 +711,22 @@ def persist_extraction_result(payload: dict[str, Any], trigger_type: str) -> str
                 current_ticket=ticket,
             )
 
+            # Resolve one or more teams from components first; fallback to assignee mapping.
+            resolved_teams = _resolve_ticket_teams(ticket)
+            team_ids = [team_id for team_id, _team_name in resolved_teams if str(team_id or "").strip()]
+            team_names = [team_name for _team_id, team_name in resolved_teams if str(team_name or "").strip()]
+            team_id = team_ids[0] if team_ids else ""
+            team_name = team_names[0] if team_names else ""
+
             conn.execute(
                 """
                 INSERT INTO tickets_current(
                     ticket_key, project_key, summary, issue_type, status, priority,
                     assignee, reporter, report_date, due_date, resolution_date, updated,
                     story_points, time_original_estimate, time_estimate, time_spent,
-                    source_links_json, dependencies_json, last_seen_run_id, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_links_json, dependencies_json, last_seen_run_id, updated_at,
+                    team_id, team_name, team_ids_json, team_names_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_key) DO UPDATE SET
                     project_key=excluded.project_key,
                     summary=excluded.summary,
@@ -498,7 +746,11 @@ def persist_extraction_result(payload: dict[str, Any], trigger_type: str) -> str
                     source_links_json=excluded.source_links_json,
                     dependencies_json=excluded.dependencies_json,
                     last_seen_run_id=excluded.last_seen_run_id,
-                    updated_at=excluded.updated_at
+                    updated_at=excluded.updated_at,
+                    team_id=excluded.team_id,
+                    team_name=excluded.team_name,
+                    team_ids_json=excluded.team_ids_json,
+                    team_names_json=excluded.team_names_json
                 """,
                 (
                     ticket_key,
@@ -521,6 +773,10 @@ def persist_extraction_result(payload: dict[str, Any], trigger_type: str) -> str
                     _to_json(ticket.get("dependencies", {})),
                     run_id,
                     now_iso,
+                    team_id,
+                    team_name,
+                    _to_json(team_ids),
+                    _to_json(team_names),
                 ),
             )
 
@@ -695,17 +951,127 @@ def _append_team_filter_exists(
     assignee_sql: str,
     team_values: list[str],
 ) -> None:
+    """Filter tickets by team ownership, with fallback for legacy rows.
+
+    Primary path uses ticket.team_id / ticket.team_name.
+    Fallback path uses assignee membership for legacy rows where team fields are blank.
+    """
     if not team_values:
         return
 
-    member_names = _member_names_for_team_values(team_values)
-    if not member_names:
+    # Normalize team filter values
+    normalized_filters = {_normalize_team_text(value) for value in team_values if str(value or "").strip()}
+    if not normalized_filters:
+        return
+
+    include_unmapped = _normalize_team_text(UNMAPPED_TEAM_OPTION) in normalized_filters
+    normalized_filters.discard(_normalize_team_text(UNMAPPED_TEAM_OPTION))
+    team_values_without_unmapped = [
+        value
+        for value in team_values
+        if _normalize_team_text(value) != _normalize_team_text(UNMAPPED_TEAM_OPTION)
+    ]
+
+    # Get normalized team IDs and names from roster
+    team_ids: set[str] = set()
+    team_names: set[str] = set()
+    for team in load_team_roster():
+        team_id = str(team.get("team_id") or "").strip()
+        team_name = str(team.get("team_name") or "").strip()
+        if _normalize_team_text(team_id) in normalized_filters or _normalize_team_text(team_name) in normalized_filters:
+            if team_id:
+                team_ids.add(team_id.casefold())
+            if team_name:
+                team_names.add(team_name.casefold())
+    
+    if not team_ids and not team_names and not include_unmapped:
+        # No matching teams found, return no results
         where_parts.append("1 = 0")
         return
 
-    placeholders = ", ".join("?" for _ in member_names)
-    where_parts.append(f"LOWER(TRIM({assignee_sql})) IN ({placeholders})")
-    params.extend(member_names)
+    # Filter by team_id/team_name (including multi-team JSON fields), with legacy assignee fallback.
+    team_ids_sorted = sorted(team_ids)
+    team_names_sorted = sorted(team_names)
+    no_team_assignment_condition = (
+        "((tc.team_id IS NULL OR tc.team_id = '') "
+        "AND (tc.team_name IS NULL OR tc.team_name = '') "
+        "AND (tc.team_ids_json IS NULL OR tc.team_ids_json = '' OR tc.team_ids_json = '[]') "
+        "AND (tc.team_names_json IS NULL OR tc.team_names_json = '' OR tc.team_names_json = '[]'))"
+    )
+
+    team_conditions: list[str] = []
+    team_condition_params: list[Any] = []
+    if team_ids_sorted:
+        team_id_placeholders = ", ".join("?" for _ in team_ids_sorted)
+        team_conditions.append(f"LOWER(TRIM(tc.team_id)) IN ({team_id_placeholders})")
+        team_condition_params.extend(team_ids_sorted)
+        for team_id in team_ids_sorted:
+            team_conditions.append("tc.team_ids_json LIKE ?")
+            team_condition_params.append(f'%"{team_id}"%')
+    if team_names_sorted:
+        team_name_placeholders = ", ".join("?" for _ in team_names_sorted)
+        team_conditions.append(f"LOWER(TRIM(tc.team_name)) IN ({team_name_placeholders})")
+        team_condition_params.extend(team_names_sorted)
+        for team_name in team_names_sorted:
+            team_conditions.append("tc.team_names_json LIKE ?")
+            team_condition_params.append(f'%"{team_name}"%')
+    base_team_condition = " OR ".join(team_conditions) if team_conditions else "1 = 0"
+
+    member_names_sorted = _member_names_for_team_values(team_values_without_unmapped) if team_values_without_unmapped else []
+    if member_names_sorted:
+        member_placeholders = ", ".join("?" for _ in member_names_sorted)
+        legacy_member_condition = (
+            f"({no_team_assignment_condition} "
+            f"AND LOWER(TRIM({assignee_sql})) IN ({member_placeholders}))"
+        )
+        if include_unmapped:
+            all_mapped_assignees = _member_names_for_team_values([])
+            if all_mapped_assignees:
+                mapped_placeholders = ", ".join("?" for _ in all_mapped_assignees)
+                unmapped_condition = (
+                    f"({no_team_assignment_condition} "
+                    f"AND ({assignee_sql} IS NULL OR TRIM({assignee_sql}) = '' "
+                    f"OR LOWER(TRIM({assignee_sql})) NOT IN ({mapped_placeholders})))"
+                )
+                combined_condition = f"({base_team_condition} OR {legacy_member_condition} OR {unmapped_condition})"
+                where_parts.append(combined_condition)
+                params.extend(team_condition_params)
+                params.extend(member_names_sorted)
+                params.extend(all_mapped_assignees)
+                return
+            unmapped_condition = (
+                f"({no_team_assignment_condition})"
+            )
+            combined_condition = f"({base_team_condition} OR {legacy_member_condition} OR {unmapped_condition})"
+            where_parts.append(combined_condition)
+            params.extend(team_condition_params)
+            params.extend(member_names_sorted)
+            return
+
+        where_parts.append(f"({base_team_condition} OR {legacy_member_condition})")
+        params.extend(team_condition_params)
+        params.extend(member_names_sorted)
+        return
+
+    if include_unmapped:
+        all_mapped_assignees = _member_names_for_team_values([])
+        if all_mapped_assignees:
+            mapped_placeholders = ", ".join("?" for _ in all_mapped_assignees)
+            unmapped_condition = (
+                f"({no_team_assignment_condition} "
+                f"AND ({assignee_sql} IS NULL OR TRIM({assignee_sql}) = '' "
+                f"OR LOWER(TRIM({assignee_sql})) NOT IN ({mapped_placeholders})))"
+            )
+            where_parts.append(f"({base_team_condition} OR {unmapped_condition})")
+            params.extend(team_condition_params)
+            params.extend(all_mapped_assignees)
+            return
+        where_parts.append(f"({base_team_condition} OR {no_team_assignment_condition})")
+        params.extend(team_condition_params)
+        return
+
+    where_parts.append(f"({base_team_condition})")
+    params.extend(team_condition_params)
 
 
 def _status_bucket(status: str) -> str:
@@ -738,6 +1104,8 @@ def _ticket_from_row(row: sqlite3.Row) -> dict[str, Any]:
         "dependencies": dependencies,
         "team_id": row["team_id"] if "team_id" in row.keys() else None,
         "team_name": row["team_name"] if "team_name" in row.keys() else None,
+        "team_ids": json.loads(row["team_ids_json"] or "[]") if "team_ids_json" in row.keys() else [],
+        "team_names": json.loads(row["team_names_json"] or "[]") if "team_names_json" in row.keys() else [],
     }
 
 
@@ -774,6 +1142,11 @@ def load_filter_options(
     _append_team_filter_exists(where_parts, query_params, "tc.assignee", teams)
     scoped_where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
 
+    # Team dropdown options should come from stored tickets and ignore active team filter,
+    # so users can still see/select other valid teams.
+    team_scope_where_clause = where_clause
+    team_scope_params = list(params)
+
     with get_connection() as conn:
         status_rows = conn.execute(
             f"""
@@ -783,6 +1156,15 @@ def load_filter_options(
             ORDER BY tc.status COLLATE NOCASE ASC
             """,
             query_params,
+        ).fetchall()
+
+        team_rows = conn.execute(
+            f"""
+            SELECT DISTINCT tc.team_id, tc.team_name, tc.team_ids_json, tc.team_names_json, tc.assignee
+            FROM tickets_current tc
+            {team_scope_where_clause}
+            """,
+            team_scope_params,
         ).fetchall()
 
         assignee_rows = conn.execute(
@@ -802,21 +1184,92 @@ def load_filter_options(
         if str(row["assignee"] or "").strip()
     ]
 
-    assignee_keys = set()
-    for val in assignees:
-        matched_csv = match_assignee_to_member(val)
-        if matched_csv:
-            assignee_keys.add(matched_csv.casefold())
-        else:
-            assignee_keys.add(val.casefold())
+    roster = load_team_roster()
+    team_id_to_name = {
+        str(team.get("team_id") or "").strip().casefold(): str(team.get("team_name") or "").strip()
+        for team in roster
+        if str(team.get("team_id") or "").strip() and str(team.get("team_name") or "").strip()
+    }
+    member_to_team_name = {
+        str(member.get("display_name") or "").strip().casefold(): str(team.get("team_name") or "").strip()
+        for team in roster
+        for member in (team.get("members") or [])
+        if str(member.get("display_name") or "").strip() and str(team.get("team_name") or "").strip()
+    }
 
-    team_names: list[str] = []
-    for team in load_team_roster(team_filters=teams if teams else None):
-        members = team.get("members") or []
-        if any(str(member.get("display_name") or "").strip().casefold() in assignee_keys for member in members):
-            team_name = str(team.get("team_name") or "").strip()
-            if team_name:
-                team_names.append(team_name)
+    valid_team_names: set[str] = set()
+    has_unmapped_tickets = False
+    for row in team_rows:
+        team_name = str(row["team_name"] or "").strip()
+        if team_name:
+            valid_team_names.add(team_name)
+
+        team_id = str(row["team_id"] or "").strip().casefold()
+        if team_id and team_id in team_id_to_name:
+            valid_team_names.add(team_id_to_name[team_id])
+
+        team_names_json = str(row["team_names_json"] or "").strip() if "team_names_json" in row.keys() else ""
+        if team_names_json:
+            try:
+                for value in json.loads(team_names_json):
+                    normalized = str(value or "").strip()
+                    if normalized:
+                        valid_team_names.add(normalized)
+            except json.JSONDecodeError:
+                pass
+
+        team_ids_json = str(row["team_ids_json"] or "").strip() if "team_ids_json" in row.keys() else ""
+        if team_ids_json:
+            try:
+                for value in json.loads(team_ids_json):
+                    normalized = str(value or "").strip().casefold()
+                    if normalized and normalized in team_id_to_name:
+                        valid_team_names.add(team_id_to_name[normalized])
+            except json.JSONDecodeError:
+                pass
+
+        if team_name or team_id or team_names_json or team_ids_json:
+            continue
+
+        assignee = str(row["assignee"] or "").strip()
+        if not assignee:
+            has_unmapped_tickets = True
+            continue
+        matched_member = match_assignee_to_member(assignee)
+        if not matched_member:
+            has_unmapped_tickets = True
+            continue
+        mapped_team = member_to_team_name.get(str(matched_member).strip().casefold())
+        if mapped_team:
+            valid_team_names.add(mapped_team)
+        else:
+            has_unmapped_tickets = True
+
+    if has_unmapped_tickets:
+        valid_team_names.add(UNMAPPED_TEAM_OPTION)
+
+    allowed_dropdown_team_names = {
+        str(team.get("team_name") or "").strip()
+        for team in load_team_roster_for_dropdown()
+        if str(team.get("team_name") or "").strip()
+    }
+    dropdown_keywords = [
+        _normalize_team_text(value)
+        for value in get_team_dropdown_keywords()
+        if _normalize_team_text(value)
+    ]
+    include_unmapped_via_keyword = any(
+        keyword in _normalize_team_text(UNMAPPED_TEAM_OPTION)
+        for keyword in dropdown_keywords
+    )
+    if allowed_dropdown_team_names:
+        team_names = [name for name in valid_team_names if name in allowed_dropdown_team_names]
+        if UNMAPPED_TEAM_OPTION in valid_team_names and (
+            not dropdown_keywords or include_unmapped_via_keyword
+        ):
+            team_names.append(UNMAPPED_TEAM_OPTION)
+    else:
+        team_names = list(valid_team_names)
 
     return {
         "statuses": statuses,
@@ -879,11 +1332,13 @@ def load_ticket_rows(
     items: list[dict[str, Any]] = []
     for row in rows:
         item = _ticket_from_row(row)
-        assignee_key = str(item.get("assignee") or "").strip().casefold()
-        team_meta = member_lookup.get(assignee_key)
-        if team_meta:
-            item["team_id"] = team_meta.get("team_id")
-            item["team_name"] = team_meta.get("team_name")
+        has_row_team = bool(str(item.get("team_id") or "").strip() or str(item.get("team_name") or "").strip())
+        if not has_row_team:
+            assignee_key = str(item.get("assignee") or "").strip().casefold()
+            team_meta = member_lookup.get(assignee_key)
+            if team_meta:
+                item["team_id"] = team_meta.get("team_id")
+                item["team_name"] = team_meta.get("team_name")
         items.append(item)
 
     return total, items
@@ -931,12 +1386,19 @@ def load_ticket_team_groups(
     for row in rows:
         ticket = _ticket_from_row(row)
         assignee = str(ticket.get("assignee") or "").strip() or "Unassigned"
-        team_meta = member_lookup.get(assignee.casefold())
-        if not team_meta:
-            continue
+        team_id = str(ticket.get("team_id") or "").strip()
+        team_name = str(ticket.get("team_name") or "").strip()
 
-        team_id = str(team_meta.get("team_id") or "").strip()
-        team_name = str(team_meta.get("team_name") or "").strip() or "Unmapped Team"
+        if not team_id and not team_name:
+            team_meta = member_lookup.get(assignee.casefold())
+            if team_meta:
+                team_id = str(team_meta.get("team_id") or "").strip()
+                team_name = str(team_meta.get("team_name") or "").strip()
+
+        if not team_id and not team_name:
+            team_id = "unmapped-team"
+            team_name = UNMAPPED_TEAM_OPTION
+
         team_group = grouped.setdefault(
             team_id,
             {
@@ -987,10 +1449,29 @@ def load_ticket_team_groups(
     return groups
 
 
+def _filter_teams_by_keywords(teams: list[dict[str, Any]], keywords: list[str]) -> list[dict[str, Any]]:
+    normalized_keywords = [
+        _normalize_team_text(keyword)
+        for keyword in keywords
+        if _normalize_team_text(keyword)
+    ]
+    if not normalized_keywords:
+        return teams
+
+    return [
+        team
+        for team in teams
+        if any(
+            keyword in _normalize_team_text(team.get("team_name", ""))
+            for keyword in normalized_keywords
+        )
+    ]
+
+
 def load_team_roster(team_filters: list[str] | None = None) -> list[dict[str, Any]]:
-    """Return all teams from CSV source-of-truth with member roster details."""
+    """Return unfiltered team roster from source, optionally narrowed by explicit team filters."""
     team_filters = team_filters or []
-    teams = _load_team_roster_from_csv()
+    teams = _load_team_roster_source()
 
     if team_filters:
         normalized_filters = {_normalize_team_text(value) for value in team_filters if str(value or "").strip()}
@@ -1005,6 +1486,21 @@ def load_team_roster(team_filters: list[str] | None = None) -> list[dict[str, An
     return teams
 
 
+def load_team_roster_for_team_details(team_filters: list[str] | None = None) -> list[dict[str, Any]]:
+    """Return team roster scoped by dashboard.team_visibility_keywords from .config."""
+    teams = load_team_roster(team_filters=team_filters)
+    return _filter_teams_by_keywords(teams, get_team_visibility_keywords())
+
+
+def load_team_roster_for_dropdown() -> list[dict[str, Any]]:
+    """Return Team dropdown roster scoped by dashboard.team_dropdown_keywords from .config.
+
+    Empty keyword list means all teams are shown.
+    """
+    teams = load_team_roster(team_filters=None)
+    return _filter_teams_by_keywords(teams, get_team_dropdown_keywords())
+
+
 def load_team_workspace_overview(
     statuses: list[str],
     assignees: list[str],
@@ -1014,8 +1510,8 @@ def load_team_workspace_overview(
     search: str | None,
     board_id: str | None,
 ) -> dict[str, Any]:
-    """Return team cards driven by CSV source-of-truth roster."""
-    roster = load_team_roster(team_filters=teams)
+    """Return team cards driven by JSON/CSV source-of-truth roster."""
+    roster = load_team_roster_for_team_details(team_filters=teams)
 
     # To get metric numbers for all teams under current filters, let's load all tickets matching non-team filters
     total, all_tickets = load_ticket_rows(
@@ -1121,7 +1617,7 @@ def load_team_detail_tabs(
     board_id: str | None,
 ) -> dict[str, Any]:
     """Return team detail data sourced from CSV roster."""
-    team_roster = load_team_roster(team_filters=[team_id])
+    team_roster = load_team_roster_for_team_details(team_filters=[team_id])
     team_meta = team_roster[0] if team_roster else {}
 
     total_assigned, assigned_items = load_ticket_rows(
@@ -1246,7 +1742,7 @@ def load_grouped_tickets_by_team(
     excluded_assignees: list[str],
     search: str | None,
     board_id: str | None,
-    limit: int,
+    limit: int | None,
     offset: int,
 ) -> dict[str, Any]:
     """Return Team -> Member grouped payload compatible with tickets endpoint."""
@@ -1380,7 +1876,11 @@ def calculate_metrics(
             scoped_params,
         ).fetchall()
 
-        active_tickets = sum(int(row["count"]) for row in by_status_rows)
+        active_tickets = sum(
+            int(row["count"])
+            for row in by_status_rows
+            if _is_active_ticket_status(row["status"])
+        )
 
         open_bug_count = int(
             conn.execute(
@@ -1466,6 +1966,23 @@ def calculate_metrics(
             "intra_team": intra_team,
         },
     }
+
+
+def _is_active_ticket_status(status: str | None) -> bool:
+    """Return True when a ticket status should count as active in the overview KPI."""
+    normalized = " ".join(str(status or "").strip().lower().split())
+    if not normalized:
+        return True
+
+    if normalized in {"done", "rejected"}:
+        return False
+
+    # Exclude explicit and prefixed todo-style statuses (for example: "to do", "sqa to do").
+    compact = normalized.replace(" ", "")
+    if compact == "todo" or compact.endswith("todo"):
+        return False
+
+    return True
 
 
 def build_network_graph(

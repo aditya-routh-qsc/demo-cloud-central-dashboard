@@ -14,7 +14,6 @@ from playwright.async_api import async_playwright
 
 SHOW_URLS = {
     "india": "https://www.infocomm-india.com/2026-show-schedule",
-    "asia": "https://www.infocomm-asia.com/2026-show-schedule",
     "global": "https://www.infocommshow.org/schedule"
 }
 
@@ -97,8 +96,8 @@ def save_to_csv(data: list[dict], filepath: Path):
     print(f"[+] Successfully saved {len(data)} items to CSV file: {filepath}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Scrape InfoComm Summit Schedules (Global, India, Asia)")
-    parser.add_argument("--show", choices=["global", "india", "asia"], default="india", help="InfoComm show to scrape (default: india)")
+    parser = argparse.ArgumentParser(description="Scrape InfoComm Summit Schedules (Global, India)")
+    parser.add_argument("--show", choices=["global", "india"], default="india", help="InfoComm show to scrape (default: india)")
     parser.add_argument("--url", help="Override the default URL for the selected show")
     parser.add_argument("--format", choices=["json", "csv"], default="json", help="Output format (json or csv)")
     parser.add_argument("--output", required=True, help="Path to save the output file")

@@ -32,6 +32,34 @@ const state = {
     schedule: [],
     loading: false,
   },
+  release: {
+    rows: [],
+    loading: false,
+    error: "",
+    loadedOnce: false,
+    editMode: false,
+    selectedRowIds: [],
+    relationshipData: {},
+    relationshipForm: {
+      dependsSearch: "",
+      coReleasesSearch: "",
+      dependsOnSelected: [],
+      coReleasesSelected: [],
+    },
+    filters: {
+      nameQuery: "",
+      status: "",
+    },
+    sort: {
+      columnKey: "",
+      direction: "none",
+    },
+    graph: {
+      visible: false,
+      statusFilter: ["Released", "Planned", "Archived", "Overdue"],
+      instance: null,
+    },
+  },
   ui: {
     advancedFiltersOpen: true,
     sidebarCollapsed: false,
@@ -78,8 +106,91 @@ const el = {
   infocommSkeleton: document.getElementById("infocommSkeleton"),
   infocommDateTabs: document.getElementById("infocommDateTabs"),
   infocommScheduleList: document.getElementById("infocommScheduleList"),
+  releasePanelState: document.getElementById("releasePanelState"),
+  releaseRelationshipControls: document.getElementById("releaseRelationshipControls"),
+  releaseRelationshipFeedback: document.getElementById("releaseRelationshipFeedback"),
+  releaseDependsSelectedList: document.getElementById("releaseDependsSelectedList"),
+  releaseDependsSearchInput: document.getElementById("releaseDependsSearchInput"),
+  releaseDependsSuggestions: document.getElementById("releaseDependsSuggestions"),
+  releaseCoreleasesSelectedList: document.getElementById("releaseCoreleasesSelectedList"),
+  releaseCoreleasesSearchInput: document.getElementById("releaseCoreleasesSearchInput"),
+  releaseCoreleasesSuggestions: document.getElementById("releaseCoreleasesSuggestions"),
+  releaseEditToggleBtn: document.getElementById("releaseEditToggleBtn"),
+  releaseApplyRelationshipsBtn: document.getElementById("releaseApplyRelationshipsBtn"),
+  releaseGraphToggleBtn: document.getElementById("releaseGraphToggleBtn"),
+  releaseTableFiltersWrap: document.getElementById("releaseTableFiltersWrap"),
+  releaseNameFilterInput: document.getElementById("releaseNameFilterInput"),
+  releaseStatusFilterSelect: document.getElementById("releaseStatusFilterSelect"),
+  releaseClearFiltersBtn: document.getElementById("releaseClearFiltersBtn"),
+  releaseSelectAllCheckbox: document.getElementById("releaseSelectAllCheckbox"),
+  releaseTableWrap: document.getElementById("releaseTableWrap"),
+  releaseTableBody: document.getElementById("releaseTableBody"),
+  releaseGraphPanel: document.getElementById("releaseGraphPanel"),
+  releaseGraphStatusFilter: document.getElementById("releaseGraphStatusFilter"),
+  releaseGraphCanvas: document.getElementById("releaseGraphCanvas"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),
+  globalLoadingIndicator: document.getElementById("globalLoadingIndicator"),
 };
+
+const loadingUiState = {
+  activeRequests: 0,
+  revealTimer: null,
+  hideTimer: null,
+  visibleSince: 0,
+};
+
+const loadingRevealDelayMs = 120;
+const loadingMinVisibleMs = 220;
+
+function setGlobalLoadingVisible(visible) {
+  if (!el.globalLoadingIndicator) {
+    return;
+  }
+  el.globalLoadingIndicator.classList.toggle("is-visible", visible);
+  el.globalLoadingIndicator.setAttribute("aria-hidden", String(!visible));
+}
+
+function beginGlobalLoading() {
+  loadingUiState.activeRequests += 1;
+  if (loadingUiState.activeRequests !== 1) {
+    return;
+  }
+
+  if (loadingUiState.hideTimer) {
+    clearTimeout(loadingUiState.hideTimer);
+    loadingUiState.hideTimer = null;
+  }
+
+  loadingUiState.revealTimer = setTimeout(() => {
+    loadingUiState.revealTimer = null;
+    if (loadingUiState.activeRequests > 0) {
+      loadingUiState.visibleSince = Date.now();
+      setGlobalLoadingVisible(true);
+    }
+  }, loadingRevealDelayMs);
+}
+
+function endGlobalLoading() {
+  loadingUiState.activeRequests = Math.max(0, loadingUiState.activeRequests - 1);
+  if (loadingUiState.activeRequests > 0) {
+    return;
+  }
+
+  if (loadingUiState.revealTimer) {
+    clearTimeout(loadingUiState.revealTimer);
+    loadingUiState.revealTimer = null;
+  }
+
+  const elapsed = Date.now() - loadingUiState.visibleSince;
+  const remainingVisibleMs = Math.max(0, loadingMinVisibleMs - elapsed);
+  if (loadingUiState.hideTimer) {
+    clearTimeout(loadingUiState.hideTimer);
+  }
+  loadingUiState.hideTimer = setTimeout(() => {
+    loadingUiState.hideTimer = null;
+    setGlobalLoadingVisible(false);
+  }, remainingVisibleMs);
+}
 
 function syncSidebarDisclosure() {
   if (!el.dashboardShell || !el.toggleSidebarBtn) {
@@ -156,7 +267,7 @@ function setAdvancedFiltersOpen(nextOpen, options = {}) {
 }
 
 function shouldHideFilterControlsForTab(tabName) {
-  return tabName === "teams" || tabName === "infocomm";
+  return tabName === "teams" || tabName === "infocomm" || tabName === "release";
 }
 
 function syncFilterControlsVisibility(tabName) {
@@ -397,30 +508,58 @@ function buildGroupedTicketsFromRows(rows) {
     grouped.get(assignee).push(ticket);
   }
 
-  return Array.from(grouped.entries())
-    .map(([assignee, items]) => ({ assignee, count: items.length, items }))
+  const members = Array.from(grouped.entries())
+    .map(([assignee, items]) => ({ member_name: assignee, assignee, count: items.length, items }))
     .sort((left, right) => {
       if (right.count !== left.count) {
         return right.count - left.count;
       }
       return left.assignee.localeCompare(right.assignee);
     });
+
+  const total = members.reduce((sum, member) => sum + Number(member.count || 0), 0);
+  return [{
+    team_id: "unmapped-team",
+    team_name: "Unmapped Team",
+    metrics: { total, in_progress: 0, blocked: 0 },
+    members,
+  }];
 }
 
-async function apiGet(path) {
-  const response = await fetch(path, { headers: { Accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+async function apiGet(path, options = {}) {
+  const trackLoading = options.trackLoading !== false;
+  if (trackLoading) {
+    beginGlobalLoading();
   }
-  return response.json();
+  try {
+    const response = await fetch(path, { headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    if (trackLoading) {
+      endGlobalLoading();
+    }
+  }
 }
 
-async function apiPost(path) {
-  const response = await fetch(path, { method: "POST", headers: { Accept: "application/json" } });
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+async function apiPost(path, options = {}) {
+  const trackLoading = options.trackLoading !== false;
+  if (trackLoading) {
+    beginGlobalLoading();
   }
-  return response.json();
+  try {
+    const response = await fetch(path, { method: "POST", headers: { Accept: "application/json" } });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    return response.json();
+  } finally {
+    if (trackLoading) {
+      endGlobalLoading();
+    }
+  }
 }
 
 function applyStateToQuery() {
@@ -644,91 +783,37 @@ function renderStatusChart() {
   }, "status");
 }
 
-function renderDependencyChart() {
-  const dep = (state.metrics && state.metrics.dependency_summary) || {};
-  makeChart("dependencyChart", {
+function renderPriorityChart() {
+  const byPriority = new Map();
+  for (const ticket of state.tickets) {
+    const key = String(ticket.priority || "Unspecified").trim() || "Unspecified";
+    byPriority.set(key, (byPriority.get(key) || 0) + 1);
+  }
+
+  const rows = Array.from(byPriority.entries()).sort((left, right) => right[1] - left[1]);
+  if (!rows.length) {
+    rows.push(["No tickets", 1]);
+  }
+
+  const hasRealData = rows.length > 0 && rows[0][0] !== "No tickets";
+  makeChart("priorityChart", {
     type: "doughnut",
-    data: {
-      labels: ["Blockers", "Inter-team", "Intra-team"],
-      datasets: [{
-        data: [dep.blockers || 0, dep.inter_team || 0, dep.intra_team || 0],
-        backgroundColor: ["#ff6b6b", "#ff9f43", "#3ad29f"],
-      }],
-    },
-    options: { responsive: true },
-  }, "dependency");
-}
-
-function renderStoryPointsChart() {
-  const byStatus = new Map();
-  for (const ticket of state.tickets) {
-    const key = ticket.status || "Unknown";
-    const points = Number(ticket.story_points || 0);
-    byStatus.set(key, (byStatus.get(key) || 0) + points);
-  }
-
-  const totalPoints = Array.from(byStatus.values()).reduce((sum, v) => sum + v, 0);
-  const hasPointsData = totalPoints > 0;
-
-  // Fall back to ticket count per status when no story points are recorded
-  let labels, data, chartLabel;
-  if (hasPointsData) {
-    labels = Array.from(byStatus.keys());
-    data = Array.from(byStatus.values());
-    chartLabel = "Story points";
-  } else {
-    const byCount = new Map();
-    for (const ticket of state.tickets) {
-      const key = ticket.status || "Unknown";
-      byCount.set(key, (byCount.get(key) || 0) + 1);
-    }
-    labels = Array.from(byCount.keys());
-    data = Array.from(byCount.values());
-    chartLabel = "Tickets (no story points)";
-  }
-
-  // Update the chart title to reflect what is being shown
-  const chartHeading = document.querySelector("#metrics .panel:first-child h3");
-  if (chartHeading) {
-    chartHeading.textContent = hasPointsData ? "Story points by status" : "Tickets count by status";
-  }
-
-  makeChart("storyPointsChart", {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: chartLabel,
-        data,
-        backgroundColor: "rgba(58, 210, 159, 0.66)",
-      }],
-    },
-    options: { responsive: true, plugins: { legend: { display: false } } },
-  }, "storyPoints");
-}
-
-function renderAssigneeChart() {
-  const byAssignee = new Map();
-  for (const ticket of state.tickets) {
-    const key = ticket.assignee || "Unassigned";
-    byAssignee.set(key, (byAssignee.get(key) || 0) + 1);
-  }
-  const rows = Array.from(byAssignee.entries())
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8);
-
-  makeChart("assigneeChart", {
-    type: "bar",
     data: {
       labels: rows.map((row) => row[0]),
       datasets: [{
-        label: "Tickets",
         data: rows.map((row) => row[1]),
-        backgroundColor: "rgba(255, 159, 67, 0.64)",
+        backgroundColor: hasRealData
+          ? ["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#14b8a6"]
+          : ["rgba(156, 163, 175, 0.5)"],
       }],
     },
-    options: { responsive: true, plugins: { legend: { display: false } } },
-  }, "assignee");
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: { enabled: hasRealData },
+      },
+    },
+  }, "priority");
 }
 
 function renderTickets() {
@@ -918,6 +1003,1009 @@ function renderTeamDetailPanels() {
   }
 }
 
+const RELEASE_RELATIONSHIPS_STORAGE_KEY = "release.relationships.v1";
+
+function formatReleaseDate(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  }).format(date);
+}
+
+function parseReleaseDateMillis(rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  const directParse = Date.parse(value);
+  if (Number.isFinite(directParse)) {
+    return directParse;
+  }
+
+  const simpleMatch = value.match(/^(\d{1,2})\/([A-Za-z]{3})\/(\d{2,4})$/);
+  if (!simpleMatch) {
+    return null;
+  }
+
+  const day = Number(simpleMatch[1]);
+  const monthToken = simpleMatch[2].toLowerCase();
+  let year = Number(simpleMatch[3]);
+  const monthLookup = {
+    jan: 0,
+    feb: 1,
+    mar: 2,
+    apr: 3,
+    may: 4,
+    jun: 5,
+    jul: 6,
+    aug: 7,
+    sep: 8,
+    oct: 9,
+    nov: 10,
+    dec: 11,
+  };
+  if (!(monthToken in monthLookup)) {
+    return null;
+  }
+  if (year < 100) {
+    year += 2000;
+  }
+
+  const utcMillis = Date.UTC(year, monthLookup[monthToken], day);
+  if (!Number.isFinite(utcMillis)) {
+    return null;
+  }
+
+  return utcMillis;
+}
+
+function cycleSortDirection(currentDirection, isSameColumn) {
+  if (!isSameColumn) {
+    return "asc";
+  }
+  if (currentDirection === "asc") {
+    return "desc";
+  }
+  if (currentDirection === "desc") {
+    return "none";
+  }
+  return "asc";
+}
+
+function compareReleaseTextValues(leftValue, rightValue) {
+  return String(leftValue || "").localeCompare(String(rightValue || ""), undefined, {
+    sensitivity: "base",
+    numeric: true,
+  });
+}
+
+function compareReleaseRows(leftRow, rightRow, columnKey) {
+  if (columnKey === "releaseDate") {
+    const leftMillis = parseReleaseDateMillis(leftRow.releaseDate);
+    const rightMillis = parseReleaseDateMillis(rightRow.releaseDate);
+    if (leftMillis !== null && rightMillis !== null && leftMillis !== rightMillis) {
+      return leftMillis - rightMillis;
+    }
+    if (leftMillis === null && rightMillis !== null) {
+      return 1;
+    }
+    if (leftMillis !== null && rightMillis === null) {
+      return -1;
+    }
+  }
+  return compareReleaseTextValues(leftRow[columnKey], rightRow[columnKey]);
+}
+
+function getSortedReleaseRows(rowsInput) {
+  const rows = Array.isArray(rowsInput) ? rowsInput : [];
+  const sortState = state.release.sort || { columnKey: "", direction: "none" };
+  const columnKey = String(sortState.columnKey || "");
+  const direction = String(sortState.direction || "none");
+
+  if (!columnKey || direction === "none") {
+    return rows;
+  }
+
+  const multiplier = direction === "desc" ? -1 : 1;
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      const valueCompare = compareReleaseRows(left.row, right.row, columnKey) * multiplier;
+      if (valueCompare !== 0) {
+        return valueCompare;
+      }
+      return left.index - right.index;
+    })
+    .map((entry) => entry.row);
+}
+
+function computeReleaseStatus(release) {
+  if (release.released === true) {
+    return "Released";
+  }
+  if (release.archived === true) {
+    return "Archived";
+  }
+  if (release.overdue === true) {
+    return "Overdue";
+  }
+  return "Planned";
+}
+
+function normalizeReleaseRows(payload) {
+  const records = Array.isArray(payload?.releases) ? payload.releases : [];
+  return records
+    .map((release) => {
+      const id = String(release?.id || release?.releaseId || release?.name || "").trim();
+      if (!id) {
+        return null;
+      }
+      const name = String(release?.name || release?.releaseName || id).trim() || "Untitled release";
+      const releaseDate = String(release?.releaseDate || release?.userReleaseDate || "").trim();
+      return {
+        id,
+        name,
+        releaseDate,
+        status: computeReleaseStatus(release),
+      };
+    })
+    .filter(Boolean);
+}
+
+function getReleaseRowByIdMap() {
+  const map = new Map();
+  for (const row of state.release.rows || []) {
+    map.set(String(row.id), row);
+  }
+  return map;
+}
+
+function getValidReleaseIdsSet() {
+  return new Set((state.release.rows || []).map((row) => String(row.id || "")).filter(Boolean));
+}
+
+function createEmptyReleaseRelationshipEntry() {
+  return {
+    depends_on: [],
+    co_releases: [],
+  };
+}
+
+function normalizeReleaseRelationshipMap(rawMap, validIdsSet) {
+  const map = rawMap && typeof rawMap === "object" ? rawMap : {};
+  const validIds = Array.from(validIdsSet || []);
+  const normalized = {};
+
+  for (const id of validIds) {
+    const entry = map[id] && typeof map[id] === "object" ? map[id] : createEmptyReleaseRelationshipEntry();
+    const depends = uniqueValues(Array.isArray(entry.depends_on) ? entry.depends_on : [])
+      .filter((targetId) => targetId !== id && validIdsSet.has(targetId));
+    const coReleases = uniqueValues(Array.isArray(entry.co_releases) ? entry.co_releases : [])
+      .filter((targetId) => targetId !== id && validIdsSet.has(targetId));
+
+    normalized[id] = {
+      depends_on: depends,
+      co_releases: coReleases,
+    };
+  }
+
+  // Enforce bidirectional co-release relationships.
+  for (const id of validIds) {
+    for (const peerId of normalized[id].co_releases) {
+      if (!normalized[peerId]) {
+        normalized[peerId] = createEmptyReleaseRelationshipEntry();
+      }
+      if (!normalized[peerId].co_releases.includes(id)) {
+        normalized[peerId].co_releases.push(id);
+      }
+    }
+  }
+
+  for (const id of Object.keys(normalized)) {
+    normalized[id].depends_on = uniqueValues(normalized[id].depends_on)
+      .filter((targetId) => targetId !== id && validIdsSet.has(targetId))
+      .sort(compareReleaseTextValues);
+    normalized[id].co_releases = uniqueValues(normalized[id].co_releases)
+      .filter((targetId) => targetId !== id && validIdsSet.has(targetId))
+      .sort(compareReleaseTextValues);
+  }
+
+  return normalized;
+}
+
+function saveReleaseRelationshipsToLocalJson(relationshipMap) {
+  try {
+    localStorage.setItem(RELEASE_RELATIONSHIPS_STORAGE_KEY, JSON.stringify(relationshipMap || {}, null, 2));
+  } catch (_error) {
+    // Ignore storage write failures and continue with in-memory state.
+  }
+}
+
+function loadReleaseRelationshipsFromLocalJson(validIdsSet) {
+  try {
+    const raw = localStorage.getItem(RELEASE_RELATIONSHIPS_STORAGE_KEY);
+    if (!raw) {
+      return normalizeReleaseRelationshipMap({}, validIdsSet);
+    }
+    const parsed = JSON.parse(raw);
+    return normalizeReleaseRelationshipMap(parsed, validIdsSet);
+  } catch (_error) {
+    return normalizeReleaseRelationshipMap({}, validIdsSet);
+  }
+}
+
+function scrubReleaseRelationshipsAgainstRows() {
+  const validIdsSet = getValidReleaseIdsSet();
+  state.release.relationshipData = normalizeReleaseRelationshipMap(state.release.relationshipData, validIdsSet);
+  saveReleaseRelationshipsToLocalJson(state.release.relationshipData);
+}
+
+function setReleasePanelState(message, options = {}) {
+  const tone = options.tone || "muted";
+
+  if (el.releasePanelState) {
+    el.releasePanelState.className = `release-panel-state ${tone}`;
+    el.releasePanelState.textContent = message;
+  }
+}
+
+function setReleaseRelationshipFeedback(message, tone = "muted") {
+  if (!el.releaseRelationshipFeedback) {
+    return;
+  }
+  el.releaseRelationshipFeedback.className = `release-relationship-feedback ${tone}`;
+  el.releaseRelationshipFeedback.textContent = message;
+}
+
+function getReleaseStatusClass(statusValue) {
+  const normalized = String(statusValue || "").trim().toLowerCase();
+  if (normalized === "released") {
+    return "release-status release-status-released";
+  }
+  if (normalized === "planned") {
+    return "release-status release-status-planned";
+  }
+  if (normalized === "archived") {
+    return "release-status release-status-archived";
+  }
+  if (normalized === "overdue") {
+    return "release-status release-status-overdue";
+  }
+  return "release-status";
+}
+
+function getReleaseRelationshipLabel(row) {
+  const status = String(row?.status || "").trim();
+  const name = String(row?.name || row?.id || "Untitled release").trim();
+  return status ? `${name} (${status})` : name;
+}
+
+function getReleaseFilteredRows(rowsInput) {
+  const rows = Array.isArray(rowsInput) ? rowsInput : [];
+  const nameQuery = String(state.release.filters?.nameQuery || "").trim().toLowerCase();
+  const status = String(state.release.filters?.status || "").trim();
+
+  return rows.filter((row) => {
+    const nameMatches = !nameQuery || String(row.name || "").toLowerCase().includes(nameQuery);
+    const statusMatches = !status || String(row.status || "") === status;
+    return nameMatches && statusMatches;
+  });
+}
+
+function getFilteredReleaseRows(rowsInput) {
+  return getReleaseFilteredRows(rowsInput);
+}
+
+function getReleaseSelectedRowIdsSet() {
+  return new Set((state.release.selectedRowIds || []).map((id) => String(id || "")).filter(Boolean));
+}
+
+function setReleaseSelectedRowsFromSet(selectedSet) {
+  state.release.selectedRowIds = Array.from(selectedSet || []).sort(compareReleaseTextValues);
+}
+
+function toggleReleaseRowSelection(rowId, selected) {
+  const selectedSet = getReleaseSelectedRowIdsSet();
+  if (selected) {
+    selectedSet.add(rowId);
+  } else {
+    selectedSet.delete(rowId);
+  }
+  setReleaseSelectedRowsFromSet(selectedSet);
+}
+
+function updateReleaseSelectAllCheckbox(displayRows) {
+  if (!el.releaseSelectAllCheckbox) {
+    return;
+  }
+  const selectedSet = getReleaseSelectedRowIdsSet();
+  const rows = Array.isArray(displayRows) ? displayRows : [];
+  if (!rows.length) {
+    el.releaseSelectAllCheckbox.checked = false;
+    el.releaseSelectAllCheckbox.indeterminate = false;
+    return;
+  }
+  const selectedCount = rows.filter((row) => selectedSet.has(String(row.id))).length;
+  el.releaseSelectAllCheckbox.checked = selectedCount > 0 && selectedCount === rows.length;
+  el.releaseSelectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < rows.length;
+}
+
+function syncReleasePanelVisibility(hasRows) {
+  const graphVisible = Boolean(state.release.graph.visible);
+  const rowsAvailable = Boolean(hasRows);
+
+  if (el.releaseGraphPanel) {
+    el.releaseGraphPanel.hidden = !graphVisible;
+  }
+  if (el.releaseTableWrap) {
+    el.releaseTableWrap.hidden = graphVisible || !rowsAvailable;
+  }
+  if (el.releaseTableFiltersWrap) {
+    el.releaseTableFiltersWrap.hidden = graphVisible;
+  }
+  if (el.releaseRelationshipControls) {
+    el.releaseRelationshipControls.hidden = graphVisible || !state.release.editMode;
+  }
+  if (el.releaseApplyRelationshipsBtn) {
+    el.releaseApplyRelationshipsBtn.hidden = graphVisible || !state.release.editMode;
+  }
+  if (el.releaseEditToggleBtn) {
+    el.releaseEditToggleBtn.textContent = state.release.editMode ? "Exit Edit" : "Edit: Off";
+    el.releaseEditToggleBtn.classList.toggle("is-active", state.release.editMode);
+  }
+  if (el.releaseGraphToggleBtn) {
+    el.releaseGraphToggleBtn.textContent = graphVisible ? "Hide Graph" : "Show Graph";
+  }
+  const selectHeader = document.querySelector("#release .release-select-col");
+  if (selectHeader) {
+    selectHeader.hidden = !state.release.editMode;
+  }
+}
+
+function toggleSuggestionSelection(collectionKey, releaseId) {
+  const values = uniqueValues(state.release.relationshipForm?.[collectionKey] || []);
+  const valueSet = new Set(values);
+  if (valueSet.has(releaseId)) {
+    valueSet.delete(releaseId);
+  } else {
+    valueSet.add(releaseId);
+  }
+  state.release.relationshipForm[collectionKey] = Array.from(valueSet).sort(compareReleaseTextValues);
+}
+
+function buildReleaseSuggestionItems(rows, searchText, selectedIds) {
+  const query = String(searchText || "").trim().toLowerCase();
+  const selectedSet = new Set(uniqueValues(selectedIds || []));
+  return rows
+    .filter((row) => !selectedSet.has(String(row.id)))
+    .filter((row) => !query || getReleaseRelationshipLabel(row).toLowerCase().includes(query))
+    .map((row) => ({
+      id: String(row.id),
+      label: getReleaseRelationshipLabel(row),
+      selected: false,
+    }));
+}
+
+function buildReleaseSelectedItems(selectedIds) {
+  const rowById = getReleaseRowByIdMap();
+  return uniqueValues(selectedIds || [])
+    .map((id) => rowById.get(String(id)))
+    .filter(Boolean)
+    .map((row) => ({
+      id: String(row.id),
+      label: getReleaseRelationshipLabel(row),
+      selected: true,
+    }));
+}
+
+function renderReleaseSelectedList(containerEl, items, onToggle) {
+  if (!containerEl) {
+    return;
+  }
+  if (!items.length) {
+    containerEl.innerHTML = "<div class='release-suggestion-empty muted'>No releases selected.</div>";
+    return;
+  }
+  containerEl.innerHTML = items
+    .map((item) => `<button type="button" class="release-suggestion-item is-selected" data-release-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`)
+    .join("");
+  for (const button of containerEl.querySelectorAll(".release-suggestion-item")) {
+    button.addEventListener("click", () => {
+      const releaseId = String(button.getAttribute("data-release-id") || "").trim();
+      if (!releaseId) {
+        return;
+      }
+      onToggle(releaseId);
+    });
+  }
+}
+
+function renderReleaseSuggestionList(containerEl, items, onToggle) {
+  if (!containerEl) {
+    return;
+  }
+  if (!items.length) {
+    containerEl.innerHTML = "<div class='release-suggestion-empty muted'>No matching releases.</div>";
+    return;
+  }
+  containerEl.innerHTML = items
+    .map((item) => `<button type="button" class="release-suggestion-item ${item.selected ? "is-selected" : ""}" data-release-id="${escapeHtml(item.id)}">${escapeHtml(item.label)}</button>`)
+    .join("");
+  for (const button of containerEl.querySelectorAll(".release-suggestion-item")) {
+    button.addEventListener("click", () => {
+      const releaseId = String(button.getAttribute("data-release-id") || "").trim();
+      if (!releaseId) {
+        return;
+      }
+      onToggle(releaseId);
+    });
+  }
+}
+
+function refreshReleaseRelationshipControls() {
+  const rows = Array.isArray(state.release.rows) ? state.release.rows : [];
+  const dependsSearch = String(state.release.relationshipForm.dependsSearch || "").trim().toLowerCase();
+  const coSearch = String(state.release.relationshipForm.coReleasesSearch || "").trim().toLowerCase();
+
+  if (el.releaseDependsSearchInput) {
+    el.releaseDependsSearchInput.value = state.release.relationshipForm.dependsSearch;
+  }
+  if (el.releaseCoreleasesSearchInput) {
+    el.releaseCoreleasesSearchInput.value = state.release.relationshipForm.coReleasesSearch;
+  }
+
+  const dependsSelectedItems = buildReleaseSelectedItems(state.release.relationshipForm.dependsOnSelected || []);
+  renderReleaseSelectedList(el.releaseDependsSelectedList, dependsSelectedItems, (releaseId) => {
+    toggleSuggestionSelection("dependsOnSelected", releaseId);
+    refreshReleaseRelationshipControls();
+  });
+
+  const dependsItems = buildReleaseSuggestionItems(rows, dependsSearch, state.release.relationshipForm.dependsOnSelected || []);
+  renderReleaseSuggestionList(el.releaseDependsSuggestions, dependsItems, (releaseId) => {
+    toggleSuggestionSelection("dependsOnSelected", releaseId);
+    refreshReleaseRelationshipControls();
+  });
+
+  const coSelectedItems = buildReleaseSelectedItems(state.release.relationshipForm.coReleasesSelected || []);
+  renderReleaseSelectedList(el.releaseCoreleasesSelectedList, coSelectedItems, (releaseId) => {
+    toggleSuggestionSelection("coReleasesSelected", releaseId);
+    refreshReleaseRelationshipControls();
+  });
+
+  const coItems = buildReleaseSuggestionItems(rows, coSearch, state.release.relationshipForm.coReleasesSelected || []);
+  renderReleaseSuggestionList(el.releaseCoreleasesSuggestions, coItems, (releaseId) => {
+    toggleSuggestionSelection("coReleasesSelected", releaseId);
+    refreshReleaseRelationshipControls();
+  });
+}
+
+function syncReleaseGraphStatusFilterInput() {
+  if (!el.releaseGraphStatusFilter) {
+    return;
+  }
+  const values = uniqueValues(state.release.graph.statusFilter || []);
+  state.release.graph.statusFilter = values.length ? values : ["Released", "Planned", "Archived", "Overdue"];
+  setSelectedValues(el.releaseGraphStatusFilter, state.release.graph.statusFilter);
+}
+
+function renderReleaseStatusFilterOptions() {
+  if (!el.releaseStatusFilterSelect) {
+    return;
+  }
+
+  const rows = Array.isArray(state.release.rows) ? state.release.rows : [];
+  const statuses = Array.from(new Set(rows.map((row) => String(row.status || "").trim()).filter(Boolean)))
+    .sort((left, right) => compareReleaseTextValues(left, right));
+
+  const options = ['<option value="">All statuses</option>'];
+  for (const status of statuses) {
+    options.push(`<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`);
+  }
+  el.releaseStatusFilterSelect.innerHTML = options.join("");
+
+  const currentStatus = String(state.release.filters?.status || "").trim();
+  const hasCurrentStatus = currentStatus && statuses.includes(currentStatus);
+  state.release.filters.status = hasCurrentStatus ? currentStatus : "";
+  el.releaseStatusFilterSelect.value = state.release.filters.status;
+}
+
+function syncReleaseFilterInputs() {
+  if (el.releaseNameFilterInput) {
+    el.releaseNameFilterInput.value = String(state.release.filters?.nameQuery || "");
+  }
+  if (el.releaseStatusFilterSelect) {
+    el.releaseStatusFilterSelect.value = String(state.release.filters?.status || "");
+  }
+}
+
+function resetReleaseFilters() {
+  state.release.filters = {
+    nameQuery: "",
+    status: "",
+  };
+}
+
+function renderReleaseSortIndicators() {
+  const sortButtons = document.querySelectorAll("[data-release-sort-key]");
+  const activeKey = String(state.release.sort?.columnKey || "");
+  const direction = String(state.release.sort?.direction || "none");
+
+  for (const button of sortButtons) {
+    const key = String(button.dataset.releaseSortKey || "");
+    const isActive = key && key === activeKey && direction !== "none";
+    const iconEl = button.querySelector(".release-sort-indicator");
+
+    button.classList.toggle("is-active", isActive);
+    let ariaSort = "none";
+    let icon = "↕";
+    if (isActive && direction === "asc") {
+      ariaSort = "ascending";
+      icon = "↑";
+    } else if (isActive && direction === "desc") {
+      ariaSort = "descending";
+      icon = "↓";
+    }
+    button.setAttribute("aria-sort", ariaSort);
+    const headerCell = button.closest("th");
+    if (headerCell) {
+      headerCell.setAttribute("aria-sort", ariaSort);
+    }
+    const label = (button.textContent || "").replace(/[↑↓↕]/g, "").trim();
+    button.setAttribute("aria-label", `${label} sort ${ariaSort}`);
+    if (iconEl) {
+      iconEl.textContent = icon;
+    }
+  }
+}
+
+function handleReleaseSortHeaderClick(columnKey) {
+  const currentKey = String(state.release.sort?.columnKey || "");
+  const currentDirection = String(state.release.sort?.direction || "none");
+  const isSameColumn = currentKey === columnKey;
+  const nextDirection = cycleSortDirection(currentDirection, isSameColumn);
+
+  if (nextDirection === "none") {
+    state.release.sort = {
+      columnKey: "",
+      direction: "none",
+    };
+  } else {
+    state.release.sort = {
+      columnKey,
+      direction: nextDirection,
+    };
+  }
+  renderReleaseTable();
+}
+
+function applyReleaseRelationshipsToSelectedRows() {
+  const selectedRowSet = getReleaseSelectedRowIdsSet();
+  if (!selectedRowSet.size) {
+    setReleaseRelationshipFeedback("Select at least one release row before applying relationships.", "muted");
+    return;
+  }
+
+  const dependsOnIds = uniqueValues(state.release.relationshipForm.dependsOnSelected || []);
+  const coReleaseIds = uniqueValues(state.release.relationshipForm.coReleasesSelected || []);
+
+  const validIds = getValidReleaseIdsSet();
+  const nextMap = normalizeReleaseRelationshipMap(state.release.relationshipData, validIds);
+
+  for (const rowId of selectedRowSet) {
+    if (!nextMap[rowId]) {
+      nextMap[rowId] = createEmptyReleaseRelationshipEntry();
+    }
+    nextMap[rowId].depends_on = dependsOnIds.filter((id) => id !== rowId && validIds.has(id));
+    nextMap[rowId].co_releases = coReleaseIds.filter((id) => id !== rowId && validIds.has(id));
+  }
+
+  state.release.relationshipData = normalizeReleaseRelationshipMap(nextMap, validIds);
+  saveReleaseRelationshipsToLocalJson(state.release.relationshipData);
+  setReleaseRelationshipFeedback(`Applied relationships to ${selectedRowSet.size} selected release${selectedRowSet.size === 1 ? "" : "s"}.`, "muted");
+  renderReleaseGraph();
+  renderReleaseTable();
+}
+
+function getReleaseGraphRenderableIds() {
+  const rowById = getReleaseRowByIdMap();
+  const selectedStatuses = new Set(uniqueValues(state.release.graph.statusFilter || []));
+  const ids = [];
+  for (const [id, entry] of Object.entries(state.release.relationshipData || {})) {
+    const row = rowById.get(id);
+    if (!row) {
+      continue;
+    }
+    const hasRelation = (entry.depends_on || []).length > 0 || (entry.co_releases || []).length > 0;
+    if (!hasRelation) {
+      continue;
+    }
+    if (!selectedStatuses.has(String(row.status || ""))) {
+      continue;
+    }
+    ids.push(id);
+  }
+  return ids;
+}
+
+function buildReleaseCoReleaseGroups(ids) {
+  const parent = {};
+  for (const id of ids) {
+    parent[id] = id;
+  }
+
+  function find(id) {
+    if (parent[id] === id) {
+      return id;
+    }
+    parent[id] = find(parent[id]);
+    return parent[id];
+  }
+
+  function union(leftId, rightId) {
+    const rootLeft = find(leftId);
+    const rootRight = find(rightId);
+    if (rootLeft !== rootRight) {
+      parent[rootRight] = rootLeft;
+    }
+  }
+
+  const idSet = new Set(ids);
+  for (const id of ids) {
+    const entry = state.release.relationshipData[id] || createEmptyReleaseRelationshipEntry();
+    for (const peerId of entry.co_releases || []) {
+      if (idSet.has(peerId)) {
+        union(id, peerId);
+      }
+    }
+  }
+
+  const groups = new Map();
+  for (const id of ids) {
+    const root = find(id);
+    if (!groups.has(root)) {
+      groups.set(root, []);
+    }
+    groups.get(root).push(id);
+  }
+
+  const idToGroup = new Map();
+  for (const [root, members] of groups.entries()) {
+    if (members.length < 2) {
+      continue;
+    }
+    const groupId = `co-group:${root}`;
+    for (const memberId of members) {
+      idToGroup.set(memberId, groupId);
+    }
+  }
+  return idToGroup;
+}
+
+function releaseStatusNodeClass(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "released") return "status-released";
+  if (normalized === "planned") return "status-planned";
+  if (normalized === "archived") return "status-archived";
+  if (normalized === "overdue") return "status-overdue";
+  return "";
+}
+
+function renderReleaseGraph() {
+  if (!el.releaseGraphPanel || !el.releaseGraphCanvas) {
+    return;
+  }
+
+  syncReleasePanelVisibility((state.release.rows || []).length > 0);
+  if (!state.release.graph.visible) {
+    return;
+  }
+
+  const cytoscapeCtor = window.cytoscape;
+  if (!cytoscapeCtor) {
+    el.releaseGraphCanvas.innerHTML = "<p class='muted'>Graph library unavailable.</p>";
+    return;
+  }
+
+  const renderableIds = getReleaseGraphRenderableIds();
+  if (!renderableIds.length) {
+    el.releaseGraphCanvas.innerHTML = "<p class='muted'>No dependency nodes match current graph filters.</p>";
+    if (state.release.graph.instance) {
+      state.release.graph.instance.destroy();
+      state.release.graph.instance = null;
+    }
+    return;
+  }
+
+  const rowById = getReleaseRowByIdMap();
+  const idSet = new Set(renderableIds);
+  const idToGroup = buildReleaseCoReleaseGroups(renderableIds);
+  const elements = [];
+
+  const groupIds = new Set(idToGroup.values());
+  for (const groupId of groupIds) {
+    elements.push({
+      data: { id: groupId, label: "Released Together" },
+      classes: "release-co-group",
+    });
+  }
+
+  for (const id of renderableIds) {
+    const row = rowById.get(id);
+    if (!row) continue;
+    const classes = ["release-node", releaseStatusNodeClass(row.status)].filter(Boolean).join(" ");
+    const data = {
+      id,
+      label: row.name,
+      status: row.status,
+    };
+    if (idToGroup.has(id)) {
+      data.parent = idToGroup.get(id);
+    }
+    elements.push({ data, classes });
+  }
+
+  for (const id of renderableIds) {
+    const entry = state.release.relationshipData[id] || createEmptyReleaseRelationshipEntry();
+    for (const dependsId of entry.depends_on || []) {
+      if (!idSet.has(dependsId)) {
+        continue;
+      }
+      elements.push({
+        data: { id: `dep:${dependsId}->${id}`, source: dependsId, target: id },
+        classes: "edge-depends",
+      });
+    }
+    for (const peerId of entry.co_releases || []) {
+      if (!idSet.has(peerId) || id >= peerId) {
+        continue;
+      }
+      elements.push({
+        data: { id: `co:${id}<->${peerId}`, source: id, target: peerId },
+        classes: "edge-corelease",
+      });
+    }
+  }
+
+  if (state.release.graph.instance) {
+    state.release.graph.instance.destroy();
+    state.release.graph.instance = null;
+  }
+
+  state.release.graph.instance = cytoscapeCtor({
+    container: el.releaseGraphCanvas,
+    elements,
+    style: [
+      {
+        selector: ".release-node",
+        style: {
+          "label": "data(label)",
+          "text-wrap": "wrap",
+          "text-max-width": 160,
+          "text-valign": "center",
+          "text-halign": "center",
+          "font-size": 11,
+          "border-width": 1.5,
+          "shape": "round-rectangle",
+          "padding": 8,
+          "background-color": "#e2e8f0",
+          "border-color": "#94a3b8",
+          "color": "#0f172a",
+          "width": 190,
+          "height": 58,
+        },
+      },
+      {
+        selector: ".status-released",
+        style: {
+          "background-color": "#ecfdf5",
+          "border-color": "#10b981",
+          "color": "#065f46",
+        },
+      },
+      {
+        selector: ".status-planned",
+        style: {
+          "background-color": "#e8f3ff",
+          "border-color": "#60a5fa",
+          "color": "#1e40af",
+        },
+      },
+      {
+        selector: ".status-archived",
+        style: {
+          "background-color": "#fff5e6",
+          "border-color": "#d97706",
+          "color": "#7c2d12",
+        },
+      },
+      {
+        selector: ".status-overdue",
+        style: {
+          "background-color": "#fef2f2",
+          "border-color": "#ef4444",
+          "color": "#991b1b",
+        },
+      },
+      {
+        selector: ".release-co-group",
+        style: {
+          "label": "data(label)",
+          "font-size": 10,
+          "text-valign": "top",
+          "text-halign": "center",
+          "background-opacity": 0.08,
+          "background-color": "#60a5fa",
+          "border-color": "#60a5fa",
+          "border-width": 1,
+          "shape": "round-rectangle",
+          "padding": 16,
+        },
+      },
+      {
+        selector: ".edge-depends",
+        style: {
+          "width": 2,
+          "line-color": "#64748b",
+          "curve-style": "bezier",
+          "target-arrow-color": "#64748b",
+          "target-arrow-shape": "triangle",
+        },
+      },
+      {
+        selector: ".edge-corelease",
+        style: {
+          "width": 2,
+          "line-style": "dashed",
+          "line-color": "#38bdf8",
+          "curve-style": "bezier",
+          "target-arrow-shape": "none",
+        },
+      },
+    ],
+    layout: {
+      name: "breadthfirst",
+      directed: true,
+      spacingFactor: 1.25,
+      padding: 16,
+    },
+  });
+
+  state.release.graph.instance.fit(undefined, 24);
+}
+
+function renderReleaseTable() {
+  if (!el.releaseTableBody) {
+    return;
+  }
+
+  const allRows = Array.isArray(state.release.rows) ? state.release.rows : [];
+  syncReleasePanelVisibility(allRows.length > 0);
+  renderReleaseSortIndicators();
+  if (!allRows.length) {
+    el.releaseTableBody.innerHTML = "";
+    updateReleaseSelectAllCheckbox([]);
+    setReleasePanelState("No releases available.", { tone: "muted", showTable: false });
+    return;
+  }
+
+  const filteredRows = getReleaseFilteredRows(allRows);
+  const rows = getSortedReleaseRows(filteredRows);
+
+  if (!rows.length) {
+    el.releaseTableBody.innerHTML = "";
+    updateReleaseSelectAllCheckbox([]);
+    setReleasePanelState("No releases match current filters.", { tone: "muted", showTable: true });
+    return;
+  }
+
+  const selectedSet = getReleaseSelectedRowIdsSet();
+  const htmlRows = rows.map((row) => `<tr>
+      ${state.release.editMode ? `<td class="release-select-col">
+        <input class="release-row-checkbox" type="checkbox" data-release-id="${escapeHtml(row.id)}" ${selectedSet.has(String(row.id)) ? "checked" : ""} aria-label="Select ${escapeHtml(row.name)}" />
+      </td>` : ""}
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(formatReleaseDate(row.releaseDate))}</td>
+      <td><span class="${getReleaseStatusClass(row.status)}">${escapeHtml(row.status || "-")}</span></td>
+    </tr>`);
+
+  el.releaseTableBody.innerHTML = htmlRows.join("");
+  if (state.release.editMode) {
+    for (const checkbox of el.releaseTableBody.querySelectorAll(".release-row-checkbox")) {
+      checkbox.addEventListener("change", () => {
+        const releaseId = String(checkbox.getAttribute("data-release-id") || "").trim();
+        if (!releaseId) {
+          return;
+        }
+        toggleReleaseRowSelection(releaseId, checkbox.checked);
+        updateReleaseSelectAllCheckbox(rows);
+      });
+    }
+    updateReleaseSelectAllCheckbox(rows);
+  } else {
+    updateReleaseSelectAllCheckbox([]);
+  }
+  const isFiltered = rows.length !== allRows.length;
+  const message = isFiltered
+    ? `Showing ${rows.length} of ${allRows.length} releases.`
+    : `Loaded ${rows.length} release${rows.length === 1 ? "" : "s"}.`;
+
+  setReleasePanelState(message, {
+    tone: "muted",
+    showTable: true,
+  });
+}
+
+function resetReleaseSelectionAndForms() {
+  state.release.selectedRowIds = [];
+  state.release.editMode = false;
+  state.release.graph.visible = false;
+  state.release.relationshipForm = {
+    dependsSearch: "",
+    coReleasesSearch: "",
+    dependsOnSelected: [],
+    coReleasesSelected: [],
+  };
+}
+
+async function loadReleaseData() {
+  state.release.loading = true;
+  state.release.error = "";
+  resetReleaseSelectionAndForms();
+  resetReleaseFilters();
+  state.release.sort = { columnKey: "", direction: "none" };
+  setReleasePanelState("Loading release data...", { tone: "muted", showTable: false });
+
+  try {
+    const payload = await apiGet("/api/releases");
+    if (payload && payload.error) {
+      throw new Error(String(payload.error));
+    }
+
+    state.release.rows = normalizeReleaseRows(payload);
+    const validIdsSet = getValidReleaseIdsSet();
+    state.release.relationshipData = loadReleaseRelationshipsFromLocalJson(validIdsSet);
+    scrubReleaseRelationshipsAgainstRows();
+    renderReleaseStatusFilterOptions();
+    syncReleaseFilterInputs();
+    refreshReleaseRelationshipControls();
+    syncReleaseGraphStatusFilterInput();
+    state.release.loadedOnce = true;
+    setReleaseRelationshipFeedback("Use Edit mode to manage Depends On and Released Together relationships.", "muted");
+    renderReleaseTable();
+    renderReleaseGraph();
+  } catch (error) {
+    state.release.rows = [];
+    state.release.relationshipData = {};
+    state.release.error = String(error?.message || error || "Unknown error");
+    renderReleaseStatusFilterOptions();
+    syncReleaseFilterInputs();
+    refreshReleaseRelationshipControls();
+    syncReleaseGraphStatusFilterInput();
+    state.release.loadedOnce = true;
+    if (el.releaseTableBody) {
+      el.releaseTableBody.innerHTML = "";
+    }
+    setReleasePanelState(`Failed to load release data: ${state.release.error}`, {
+      tone: "error-msg text-danger",
+      showTable: false,
+    });
+  } finally {
+    state.release.loading = false;
+  }
+}
+
 function setSelectOptions(selectEl, values) {
   const previousScrollTop = selectEl.scrollTop;
   const options = [];
@@ -953,7 +2041,7 @@ function refreshFilterOptions() {
 async function loadSyncStatus() {
   const previousSync = state.sync;
   try {
-    state.sync = await apiGet("/api/sync/status");
+    state.sync = await apiGet("/api/sync/status", { trackLoading: false });
   } catch (_error) {
     state.sync = null;
   }
@@ -1016,9 +2104,7 @@ async function loadDashboardData() {
 
   renderKpis();
   renderStatusChart();
-  renderDependencyChart();
-  renderStoryPointsChart();
-  renderAssigneeChart();
+  renderPriorityChart();
   refreshFilterOptions();
   renderTickets();
   renderTeamsWorkspace();
@@ -1036,6 +2122,9 @@ function setActiveTab(tabName) {
     view.classList.toggle("is-active", view.id === tabName);
   }
   syncFilterControlsVisibility(tabName);
+  if (tabName === "release" && !state.release.loading && !state.release.loadedOnce) {
+    loadReleaseData();
+  }
 }
 
 function bindTabNavigation() {
@@ -1045,6 +2134,12 @@ function bindTabNavigation() {
       setActiveTab(tab.dataset.tab);
       if (tab.dataset.tab === "infocomm" && state.infocomm.schedule.length === 0) {
         loadInfoCommSchedule();
+      }
+      if (tab.dataset.tab === "release" && state.release.loadedOnce && !state.release.loading) {
+        scrubReleaseRelationshipsAgainstRows();
+        refreshReleaseRelationshipControls();
+        renderReleaseTable();
+        renderReleaseGraph();
       }
     });
   }
@@ -1096,6 +2191,107 @@ function bindActions() {
       applyStateToQuery();
       updateFilterSummaries();
       refreshExcludeStyles();
+    });
+  }
+
+  const releaseSortButtons = document.querySelectorAll("[data-release-sort-key]");
+  for (const button of releaseSortButtons) {
+    button.addEventListener("click", () => {
+      const columnKey = String(button.dataset.releaseSortKey || "").trim();
+      if (!columnKey) {
+        return;
+      }
+      handleReleaseSortHeaderClick(columnKey);
+    });
+  }
+
+  if (el.releaseSelectAllCheckbox) {
+    el.releaseSelectAllCheckbox.addEventListener("change", () => {
+      const visibleRows = getSortedReleaseRows(getReleaseFilteredRows(state.release.rows || []));
+      const selectedSet = getReleaseSelectedRowIdsSet();
+      if (el.releaseSelectAllCheckbox.checked) {
+        for (const row of visibleRows) {
+          selectedSet.add(String(row.id));
+        }
+      } else {
+        for (const row of visibleRows) {
+          selectedSet.delete(String(row.id));
+        }
+      }
+      setReleaseSelectedRowsFromSet(selectedSet);
+      renderReleaseTable();
+    });
+  }
+
+  if (el.releaseDependsSearchInput) {
+    el.releaseDependsSearchInput.addEventListener("input", () => {
+      state.release.relationshipForm.dependsSearch = String(el.releaseDependsSearchInput.value || "");
+      refreshReleaseRelationshipControls();
+    });
+  }
+
+  if (el.releaseCoreleasesSearchInput) {
+    el.releaseCoreleasesSearchInput.addEventListener("input", () => {
+      state.release.relationshipForm.coReleasesSearch = String(el.releaseCoreleasesSearchInput.value || "");
+      refreshReleaseRelationshipControls();
+    });
+  }
+
+  if (el.releaseEditToggleBtn) {
+    el.releaseEditToggleBtn.addEventListener("click", () => {
+      state.release.editMode = !state.release.editMode;
+      if (!state.release.editMode) {
+        state.release.selectedRowIds = [];
+      }
+      renderReleaseTable();
+      refreshReleaseRelationshipControls();
+    });
+  }
+
+  if (el.releaseApplyRelationshipsBtn) {
+    el.releaseApplyRelationshipsBtn.addEventListener("click", () => {
+      applyReleaseRelationshipsToSelectedRows();
+    });
+  }
+
+  if (el.releaseGraphToggleBtn) {
+    el.releaseGraphToggleBtn.addEventListener("click", () => {
+      state.release.graph.visible = !state.release.graph.visible;
+      if (state.release.graph.visible) {
+        renderReleaseGraph();
+      } else {
+        renderReleaseTable();
+      }
+    });
+  }
+
+  if (el.releaseGraphStatusFilter) {
+    enableToggleMultiSelect(el.releaseGraphStatusFilter);
+    el.releaseGraphStatusFilter.addEventListener("change", () => {
+      state.release.graph.statusFilter = uniqueValues(getSelectedValues(el.releaseGraphStatusFilter));
+      renderReleaseGraph();
+    });
+  }
+
+  if (el.releaseNameFilterInput) {
+    el.releaseNameFilterInput.addEventListener("input", () => {
+      state.release.filters.nameQuery = String(el.releaseNameFilterInput.value || "");
+      renderReleaseTable();
+    });
+  }
+
+  if (el.releaseStatusFilterSelect) {
+    el.releaseStatusFilterSelect.addEventListener("change", () => {
+      state.release.filters.status = String(el.releaseStatusFilterSelect.value || "").trim();
+      renderReleaseTable();
+    });
+  }
+
+  if (el.releaseClearFiltersBtn) {
+    el.releaseClearFiltersBtn.addEventListener("click", () => {
+      resetReleaseFilters();
+      syncReleaseFilterInputs();
+      renderReleaseTable();
     });
   }
 
@@ -1176,12 +2372,10 @@ function renderInfoCommUI() {
   
   const showNameMap = {
     india: "InfoComm India",
-    asia: "InfoComm Asia",
     global: "InfoComm Global",
   };
   const websiteMap = {
     india: "https://www.infocomm-india.com/",
-    asia: "https://www.infocomm-asia.com/",
     global: "https://www.infocommshow.org/",
   };
   

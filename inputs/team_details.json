@@ -1,24 +1,4 @@
 {
-  "palette": {
-    "defaultColor": "#9CA3AF",
-    "skillsets": {
-      "OS&D": "#14B8A6",
-      "App C++": "#6B7280",
-      "Web BE or Full stack": "#F59E0B",
-      "Web FE": "#F97316",
-      "C#": "#3B82F6",
-      "Plug-ins": "#22C55E",
-      "DevOps": "#0EA5E9",
-      "Python": "#A855F7",
-      "DSP": "#10B981",
-      "Platform Eng (C++, DevOps)": "#6366F1",
-      "Robotics (C++/Python)": "#EC4899",
-      "Machine Learning": "#D946EF",
-      "UX": "#F43F5E",
-      "SQA": "#84CC16",
-      "FPGA": "#EAB308"
-    }
-  },
   "members": [
     {
       "id": 1712,
@@ -370,7 +350,7 @@
         },
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": "SM"
         }
       ]
@@ -1148,7 +1128,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": null
         },
         {
@@ -2018,7 +1998,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": null
         }
       ]
@@ -2585,7 +2565,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": null
         }
       ]
@@ -2955,7 +2935,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": null
         }
       ]
@@ -2970,7 +2950,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": "PO"
         }
       ]
@@ -4008,7 +3988,7 @@
       "teams": [
         {
           "pod": "Enterprise Manager Pod",
-          "team": "ReflectX",
+          "team": "Reflect X",
           "role": null
         }
       ]

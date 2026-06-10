@@ -5,6 +5,7 @@ from __future__ import annotations
 import configparser
 import logging
 import os
+import re
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -78,3 +79,42 @@ def get_database_path() -> str:
 def get_jira_project_key() -> str:
     """Return Jira project key from .env with fallback."""
     return os.getenv("JIRA_PROJECT_KEY", "QSYSCLOUD").strip()
+
+
+def get_team_visibility_keywords() -> list[str]:
+    """Return dashboard team-visibility keywords from .config.
+
+    Format example:
+    [dashboard]
+    team_visibility_keywords = reflect, devops, infra
+
+    Matching is case-insensitive and checks substring containment.
+    Empty list means no visibility restriction.
+    """
+    parser = load_config()
+    raw_value = parser.get("dashboard", "team_visibility_keywords", fallback="").strip()
+    if not raw_value:
+        return []
+
+    # Support comma, semicolon, and newline separated values.
+    parts = re.split(r"[,;\n]+", raw_value)
+    return [part.strip().casefold() for part in parts if part.strip()]
+
+
+def get_team_dropdown_keywords() -> list[str]:
+    """Return dashboard team-dropdown keywords from .config.
+
+    Format example:
+    [dashboard]
+    team_dropdown_keywords = reflect, devops, infra
+
+    Matching is case-insensitive and checks substring containment.
+    Empty list means all teams are shown in Team dropdown.
+    """
+    parser = load_config()
+    raw_value = parser.get("dashboard", "team_dropdown_keywords", fallback="").strip()
+    if not raw_value:
+        return []
+
+    parts = re.split(r"[,;\n]+", raw_value)
+    return [part.strip().casefold() for part in parts if part.strip()]

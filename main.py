@@ -26,7 +26,7 @@ from database import (
     persist_extraction_result,
     read_sync_overview,
 )
-from services import _get_runtime_inputs, get_ticket_details_from_kanban_links
+from services import _get_runtime_inputs, fetch_release_details, get_ticket_details_from_kanban_links
 import json
 
 try:
@@ -215,6 +215,24 @@ def _load_team_filter_options(
     selected_teams: list[str],
 ) -> dict[str, list[str]]:
     return load_team_filter_options(search=search, board_id=board_id, selected_teams=selected_teams)
+
+
+def _resolve_effective_team_values(
+    selected_teams: list[str],
+    search: str | None,
+    board_id: str | None,
+) -> list[str]:
+    """Use selected teams when provided; otherwise default to current team dropdown options."""
+    if selected_teams:
+        return selected_teams
+
+    filter_options = _load_team_filter_options(
+        search=search,
+        board_id=board_id,
+        selected_teams=[],
+    )
+    options = filter_options.get("teams") if isinstance(filter_options, dict) else []
+    return [str(team).strip() for team in (options or []) if str(team).strip()]
 
 
 def _group_tickets_by_assignee(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -453,11 +471,16 @@ def get_tickets(
     team_values = _parse_multi_query_values(team, allow_csv=False)
     excluded_status_values = _parse_multi_query_values(status_exclude, allow_csv=True)
     excluded_assignee_values = _parse_multi_query_values(assignee_exclude, allow_csv=False)
+    effective_team_values = _resolve_effective_team_values(
+        selected_teams=team_values,
+        search=search,
+        board_id=board_id,
+    )
 
     total, rows = _load_ticket_rows(
         statuses=status_values,
         assignees=assignee_values,
-        teams=team_values,
+        teams=effective_team_values,
         excluded_statuses=excluded_status_values,
         excluded_assignees=excluded_assignee_values,
         search=search,
@@ -474,7 +497,7 @@ def get_tickets(
     grouped_payload = load_grouped_tickets_by_team(
         statuses=status_values,
         assignees=assignee_values,
-        teams=team_values,
+        teams=effective_team_values,
         excluded_statuses=excluded_status_values,
         excluded_assignees=excluded_assignee_values,
         search=search,
@@ -506,10 +529,16 @@ def get_metrics(
 ) -> dict[str, Any]:
     search = _unwrap_query(search, None)
     board_id = _unwrap_query(board_id, None)
+    team_values = _parse_multi_query_values(team, allow_csv=False)
+    effective_team_values = _resolve_effective_team_values(
+        selected_teams=team_values,
+        search=search,
+        board_id=board_id,
+    )
     return _calculate_metrics(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
-        teams=_parse_multi_query_values(team, allow_csv=False),
+        teams=effective_team_values,
         excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
         excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
         search=search,
@@ -529,10 +558,13 @@ def get_teams_workspace(
 ) -> dict[str, Any]:
     search = _unwrap_query(search, None)
     board_id = _unwrap_query(board_id, None)
+    # Teams workspace should be controlled by team_visibility_keywords when no explicit team filter is selected.
+    # Do not default to dropdown-team options here.
+    team_values = _parse_multi_query_values(team, allow_csv=False)
     return load_teams_workspace_data(
         statuses=_parse_multi_query_values(status, allow_csv=True),
         assignees=_parse_multi_query_values(assignee, allow_csv=False),
-        teams=_parse_multi_query_values(team, allow_csv=False),
+        teams=team_values,
         excluded_statuses=_parse_multi_query_values(status_exclude, allow_csv=True),
         excluded_assignees=_parse_multi_query_values(assignee_exclude, allow_csv=False),
         search=search,
@@ -565,14 +597,17 @@ def get_team_details(
 
 @app.get("/api/infocomm/schedule/{show}")
 def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
-    if show not in ["india", "asia", "global"]:
-        raise HTTPException(status_code=400, detail="Invalid show type")
+    from scraper import SHOW_URLS
+
+    if show not in SHOW_URLS:
+        allowed = ", ".join(sorted(SHOW_URLS.keys()))
+        raise HTTPException(status_code=400, detail=f"Invalid show type. Allowed values: {allowed}")
     
     file_path = _frontend_dir.parent / "outputs" / f"infocomm_{show}.json"
     
     if refresh or not file_path.exists():
         import asyncio
-        from scraper import scrape_schedule, SHOW_URLS, save_to_json
+        from scraper import scrape_schedule, save_to_json
         
         url = SHOW_URLS[show]
         try:
@@ -616,3 +651,9 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
         dates_only.append({"date": date_value})
 
     return dates_only
+
+
+@app.get("/api/releases")
+def get_releases(project_key: str | None = Query(default=None)) -> dict[str, Any]:
+    project_key = _unwrap_query(project_key, None)
+    return fetch_release_details(project_key=project_key)

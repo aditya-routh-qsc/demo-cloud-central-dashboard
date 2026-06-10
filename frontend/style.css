@@ -86,6 +86,10 @@ body[data-theme="dark"] {
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html {
   transition: color-scheme var(--transition);
 }
@@ -133,6 +137,41 @@ body[data-theme="dark"] .bg-grid {
   background-image:
     linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.global-loading-indicator {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 5px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2500;
+  transition: opacity 0.18s ease;
+}
+
+.global-loading-indicator.is-visible {
+  opacity: 1;
+}
+
+.global-loading-bar {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: global-loading-slide 1.2s ease-in-out infinite;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+@keyframes global-loading-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
 }
 
 .panel {
@@ -629,6 +668,304 @@ body:not([data-theme="dark"]) .moon-icon {
   display: block;
 }
 
+.muted {
+  color: var(--muted);
+}
+
+.text-danger {
+  color: var(--danger-text);
+}
+
+.release-panel-state {
+  margin: 8px 0 12px;
+  font-size: 0.92rem;
+}
+
+.release-relationship-feedback {
+  min-height: 18px;
+  margin: 4px 0 10px;
+  font-size: 0.82rem;
+}
+
+.release-relationship-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.release-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 40px;
+  max-height: 140px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 8px;
+}
+
+.release-selected-list {
+  background: color-mix(in srgb, var(--brand-blue) 8%, var(--panel));
+  border-color: color-mix(in srgb, var(--brand-blue) 45%, var(--line));
+}
+
+.release-suggestion-item {
+  border: 1px solid color-mix(in srgb, var(--line) 74%, var(--brand-blue));
+  background: var(--bg-soft);
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.release-suggestion-item:hover {
+  border-color: var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue) 10%, var(--panel));
+}
+
+.release-suggestion-item.is-selected {
+  border-color: var(--brand-blue);
+  background: color-mix(in srgb, var(--brand-blue) 16%, var(--panel));
+  color: color-mix(in srgb, var(--brand-blue) 74%, var(--text));
+}
+
+.release-suggestion-empty {
+  font-size: 0.82rem;
+}
+
+.release-relationship-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.release-primary-actions {
+  margin-bottom: 12px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.release-table-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+.release-filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.release-filter-field > span {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.release-filter-field input,
+.release-filter-field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 12px;
+  min-height: 38px;
+  transition: var(--transition);
+}
+
+.release-filter-field input:focus,
+.release-filter-field select:focus {
+  outline: none;
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(0, 124, 255, 0.1);
+}
+
+.release-table-filters .subtle-btn {
+  align-self: end;
+  min-height: 38px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.release-table-filters .subtle-btn:hover {
+  background: var(--bg-soft);
+  border-color: var(--brand-blue);
+}
+
+.release-table th {
+  white-space: nowrap;
+}
+
+.release-select-col {
+  width: 42px;
+  text-align: center;
+}
+
+.release-row-checkbox,
+#releaseSelectAllCheckbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand-blue);
+}
+
+.release-sort-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.release-sort-indicator {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.release-sort-button.is-active {
+  color: var(--brand-blue);
+}
+
+.release-sort-button.is-active .release-sort-indicator {
+  color: var(--brand-blue);
+  font-weight: 700;
+}
+
+.release-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.release-status-released {
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+  color: var(--ok-text);
+}
+
+.release-status-planned {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: color-mix(in srgb, var(--accent) 75%, var(--text));
+}
+
+.release-status-archived {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 42%, var(--line));
+  color: color-mix(in srgb, var(--warn-text) 90%, var(--text));
+}
+
+.release-status-overdue {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+
+.release-graph-panel {
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.release-graph-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 12px;
+}
+
+.release-graph-toolbar .release-filter-field {
+  min-width: 240px;
+}
+
+.release-graph-toolbar select[multiple] {
+  min-height: 110px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 45%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--brand-blue) 8%, var(--panel)), var(--panel));
+  color: var(--text);
+}
+
+#releaseGraphStatusFilter option {
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+#releaseGraphStatusFilter option:checked {
+  background: var(--brand-blue);
+  color: #ffffff;
+}
+
+.release-graph-canvas {
+  width: 100%;
+  min-height: 460px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+@media (max-width: 760px) {
+  .release-relationship-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .release-relationship-actions {
+    justify-content: flex-start;
+  }
+
+  .release-table-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .release-table-filters .subtle-btn {
+    width: fit-content;
+  }
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -835,20 +1172,6 @@ body:not([data-theme="dark"]) .moon-icon {
 
 .team-panel.is-active {
   display: block;
-}
-
-.team-metrics-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.metric-pill {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 4px 8px;
-  font-size: 0.78rem;
 }
 
 .reported-list .reported-pill {
@@ -1427,4 +1750,14 @@ a.jira-link {
   font-size: 0.88rem;
   color: var(--text-muted);
   line-height: 1.45;
+}
+
+#releaseEditToggleBtn.is-active {
+  border-color: var(--brand-blue);
+  color: #ffffff;
+  background: var(--brand-blue);
+}
+
+#releaseEditToggleBtn.is-active:hover {
+  filter: brightness(0.96);
 }

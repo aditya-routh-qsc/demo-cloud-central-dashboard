@@ -10,15 +10,19 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/app/style.css?v=20260609-1" />
+  <link rel="stylesheet" href="/app/style.css?v=20260610-1" />
   <link rel="icon" type="image/png" href="/assets/images/qsys-logo.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+  <script src="https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js" defer></script>
   <script src="https://unpkg.com/lucide@0.400.0" defer></script>
-  <script src="/app/app.js?v=20260609-1" defer></script>
+  <script src="/app/app.js?v=20260610-1" defer></script>
 </head>
 
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
+  <div id="globalLoadingIndicator" class="global-loading-indicator" aria-hidden="true">
+    <span class="global-loading-bar"></span>
+  </div>
 
   <div class="dashboard-shell">
     <!-- Left Sidebar Navigation Rail -->
@@ -32,13 +36,9 @@
           <i data-lucide="home" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Overview</span>
         </button>
-        <button class="tab" data-tab="metrics" type="button" title="Metrics" aria-label="Metrics">
-          <i data-lucide="bar-chart-3" class="tab-icon" aria-hidden="true"></i>
-          <span class="tab-label">Ticket Metrics</span>
-        </button>
         <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
           <i data-lucide="ticket" class="tab-icon" aria-hidden="true"></i>
-          <span class="tab-label">Team Tickets</span>
+          <span class="tab-label">Tickets</span>
         </button>
         <button class="tab" data-tab="teams" type="button" title="Teams" aria-label="Teams">
           <i data-lucide="users" class="tab-icon" aria-hidden="true"></i>
@@ -46,7 +46,11 @@
         </button>
         <button class="tab" data-tab="infocomm" type="button" title="Infocomm" aria-label="Infocomm">
           <i data-lucide="calendar" class="tab-icon" aria-hidden="true"></i>
-          <span class="tab-label">InfoComm Schedule</span>
+          <span class="tab-label">Events</span>
+        </button>
+        <button class="tab" data-tab="release" type="button" title="Release" aria-label="Release">
+          <i data-lucide="rocket" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Release</span>
         </button>
       </nav>
     </aside>
@@ -60,8 +64,7 @@
             <div class="brand-dot" aria-hidden="true"></div>
           </div>
           <div class="brand-text">
-            <h1>Central Dashboard of Reflect Analytics</h1>
-            <p>Dashboard for Reflect Tickects, Team Details and InfoComm Schedule</p>
+            <h1>Reflect Dashboard</h1>
           </div>
         </div>
         <div class="topbar-right">
@@ -158,8 +161,8 @@
               <canvas id="statusChart" height="180"></canvas>
             </article>
             <article class="panel">
-              <h3>Dependency mix</h3>
-              <canvas id="dependencyChart" height="180"></canvas>
+              <h3>Priority mix</h3>
+              <canvas id="priorityChart" height="180"></canvas>
             </article>
           </div>
 
@@ -167,19 +170,6 @@
             <h3>Mobile mode</h3>
             <p>This interface intentionally uses read-only summary mode on mobile screens.</p>
           </article>
-        </section>
-
-        <section id="metrics" class="view">
-          <div class="split-grid">
-            <article class="panel">
-              <h3>Story points by status</h3>
-              <canvas id="storyPointsChart" height="180"></canvas>
-            </article>
-            <article class="panel">
-              <h3>Assignee workload</h3>
-              <canvas id="assigneeChart" height="180"></canvas>
-            </article>
-          </div>
         </section>
 
         <section id="tickets" class="view">
@@ -213,7 +203,6 @@
               <h3>InfoComm Event Selector</h3>
               <div class="infocomm-selector">
                 <button class="infocomm-btn is-active" data-show="india" type="button">InfoComm India</button>
-                <button class="infocomm-btn" data-show="asia" type="button">InfoComm Asia</button>
                 <button class="infocomm-btn" data-show="global" type="button">InfoComm Global</button>
               </div>
               <div class="infocomm-website-link">
@@ -228,6 +217,101 @@
               <div id="infocommScheduleList" class="infocomm-schedule-list"></div>
             </article>
           </div>
+        </section>
+
+        <section id="release" class="view">
+          <article class="panel">
+            <h3>Jira Releases</h3>
+            <p class="muted">Release data is sourced from the existing backend Jira release integration.</p>
+            <div id="releasePanelState" class="release-panel-state muted">Select the Release tab to load data.</div>
+            <div id="releaseRelationshipFeedback" class="release-relationship-feedback muted"></div>
+
+            <div id="releaseRelationshipControls" class="release-relationship-controls panel" role="group" aria-label="Release relationship controls">
+              <div class="release-filter-field">
+                <span>Depends On Selected</span>
+                <div id="releaseDependsSelectedList" class="release-suggestions release-selected-list" aria-label="Depends On selected releases"></div>
+              </div>
+              <div class="release-filter-field">
+                <span>Depends On Search / Available</span>
+                <input id="releaseDependsSearchInput" type="text" placeholder="Search depends-on releases" />
+                <div id="releaseDependsSuggestions" class="release-suggestions" aria-label="Depends On suggestions"></div>
+              </div>
+              <div class="release-filter-field">
+                <span>Released Together Selected</span>
+                <div id="releaseCoreleasesSelectedList" class="release-suggestions release-selected-list" aria-label="Released Together selected releases"></div>
+              </div>
+              <div class="release-filter-field">
+                <span>Released Together Search / Available</span>
+                <input id="releaseCoreleasesSearchInput" type="text" placeholder="Search released-together releases" />
+                <div id="releaseCoreleasesSuggestions" class="release-suggestions" aria-label="Released Together suggestions"></div>
+              </div>
+            </div>
+
+            <div id="releasePrimaryActions" class="release-relationship-actions release-primary-actions">
+              <button id="releaseEditToggleBtn" type="button" class="reset-filters-btn">Edit: Off</button>
+              <button id="releaseApplyRelationshipsBtn" type="button" class="apply-filters-btn">Apply</button>
+              <button id="releaseGraphToggleBtn" type="button" class="reset-filters-btn">Show Graph</button>
+            </div>
+
+            <div id="releaseTableFiltersWrap" class="release-table-filters" role="group" aria-label="Release table filters">
+              <label class="release-filter-field" for="releaseNameFilterInput">
+                <span>Release Name</span>
+                <input id="releaseNameFilterInput" type="text" placeholder="Filter by release name" />
+              </label>
+              <label class="release-filter-field" for="releaseStatusFilterSelect">
+                <span>Status</span>
+                <select id="releaseStatusFilterSelect">
+                  <option value="">All statuses</option>
+                </select>
+              </label>
+              <button id="releaseClearFiltersBtn" type="button" class="subtle-btn">Clear</button>
+            </div>
+            <div id="releaseTableWrap" class="table-wrap" hidden>
+              <table class="release-table">
+                <thead>
+                  <tr>
+                    <th class="release-select-col">
+                      <input id="releaseSelectAllCheckbox" type="checkbox" aria-label="Select all release rows" />
+                    </th>
+                    <th>
+                      <button class="release-sort-button" data-release-sort-key="name" type="button" aria-sort="none">
+                        <span>Release Name</span>
+                        <span class="release-sort-indicator" aria-hidden="true">↕</span>
+                      </button>
+                    </th>
+                    <th>
+                      <button class="release-sort-button" data-release-sort-key="releaseDate" type="button" aria-sort="none">
+                        <span>Release Date</span>
+                        <span class="release-sort-indicator" aria-hidden="true">↕</span>
+                      </button>
+                    </th>
+                    <th>
+                      <button class="release-sort-button" data-release-sort-key="status" type="button" aria-sort="none">
+                        <span>Status</span>
+                        <span class="release-sort-indicator" aria-hidden="true">↕</span>
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody id="releaseTableBody"></tbody>
+              </table>
+            </div>
+
+            <div id="releaseGraphPanel" class="release-graph-panel panel" hidden>
+              <div class="release-graph-toolbar">
+                <label class="release-filter-field" for="releaseGraphStatusFilter">
+                  <span>Graph Status Filter</span>
+                  <select id="releaseGraphStatusFilter" multiple size="4" aria-label="Release graph status filter">
+                    <option value="Released" selected>Released</option>
+                    <option value="Planned" selected>Planned</option>
+                    <option value="Archived" selected>Archived</option>
+                    <option value="Overdue" selected>Overdue</option>
+                  </select>
+                </label>
+              </div>
+              <div id="releaseGraphCanvas" class="release-graph-canvas" aria-label="Release dependency graph"></div>
+            </div>
+          </article>
         </section>
       </main>
     </div>
