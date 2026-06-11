@@ -492,6 +492,497 @@ def get_connection() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+@contextmanager
+def get_release_relationship_connection(db_path: str = "database.db") -> Iterator[sqlite3.Connection]:
+    """Yield sqlite connection for release relationship persistence."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def init_release_relationship_schema(db_path: str = "database.db") -> None:
+    """Create release dependency and co-release schema in SQLite idempotently."""
+    with get_release_relationship_connection(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS release_dependencies (
+                release_id TEXT NOT NULL,
+                depends_on_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (release_id, depends_on_id),
+                CHECK (release_id <> depends_on_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS release_co_releases (
+                release_id TEXT NOT NULL,
+                co_release_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (release_id, co_release_id),
+                CHECK (release_id <> co_release_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_release_dependencies_release_id
+                ON release_dependencies (release_id);
+
+            CREATE INDEX IF NOT EXISTS idx_release_dependencies_depends_on_id
+                ON release_dependencies (depends_on_id);
+
+            CREATE INDEX IF NOT EXISTS idx_release_co_releases_release_id
+                ON release_co_releases (release_id);
+
+            CREATE INDEX IF NOT EXISTS idx_release_co_releases_co_release_id
+                ON release_co_releases (co_release_id);
+            """
+        )
+        conn.commit()
+
+
+def _normalize_release_ids(values: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for value in values or []:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        normalized.append(item)
+    return normalized
+
+
+def _normalize_release_name_text(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _derive_release_status(release_row: dict[str, Any]) -> str:
+    if bool(release_row.get("archived", False)):
+        return "Archived"
+    if bool(release_row.get("released", False)):
+        return "Released"
+    if bool(release_row.get("overdue", False)):
+        return "Overdue"
+    return "Planned"
+
+
+def upsert_release_versions_snapshot(
+    releases: list[dict[str, Any]],
+    project_key: str,
+) -> int:
+    """Persist the latest release/version snapshot for fast local querying."""
+    init_db()
+    rows_to_upsert: list[tuple[Any, ...]] = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+    normalized_project_key = str(project_key or "").strip()
+
+    for release in releases:
+        if not isinstance(release, dict):
+            continue
+
+        release_name = str(release.get("name") or "").strip()
+        if not release_name:
+            continue
+
+        release_id = str(release.get("id") or release.get("releaseId") or "").strip()
+        if not release_id:
+            release_id = f"{normalized_project_key}:{_normalize_release_name_text(release_name)}"
+
+        status = _derive_release_status(release)
+        rows_to_upsert.append(
+            (
+                release_id,
+                normalized_project_key,
+                release_name,
+                str(release.get("releaseDate") or "").strip() or None,
+                status,
+                1 if bool(release.get("released", False)) else 0,
+                1 if bool(release.get("archived", False)) else 0,
+                _to_json(release),
+                now_iso,
+            )
+        )
+
+    if not rows_to_upsert:
+        return 0
+
+    with get_connection() as conn:
+        conn.executemany(
+            """
+            INSERT INTO release_versions_current(
+                release_id,
+                project_key,
+                release_name,
+                release_date,
+                status,
+                released,
+                archived,
+                raw_json,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(release_id) DO UPDATE SET
+                project_key=excluded.project_key,
+                release_name=excluded.release_name,
+                release_date=excluded.release_date,
+                status=excluded.status,
+                released=excluded.released,
+                archived=excluded.archived,
+                raw_json=excluded.raw_json,
+                updated_at=excluded.updated_at
+            """,
+            rows_to_upsert,
+        )
+        conn.commit()
+
+    return len(rows_to_upsert)
+
+
+def load_release_versions_by_names(
+    release_names: list[str],
+    project_key: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return stored release rows matching a set of release names."""
+    init_db()
+    normalized_names = sorted(
+        {
+            _normalize_release_name_text(name)
+            for name in release_names
+            if _normalize_release_name_text(name)
+        }
+    )
+    if not normalized_names:
+        return []
+
+    placeholders = ", ".join("?" for _ in normalized_names)
+    where_clause = f"LOWER(TRIM(release_name)) IN ({placeholders})"
+    params: list[Any] = [*normalized_names]
+
+    normalized_project_key = str(project_key or "").strip()
+    if normalized_project_key:
+        where_clause = f"{where_clause} AND project_key = ?"
+        params.append(normalized_project_key)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT release_id, release_name, release_date, status, project_key
+            FROM release_versions_current
+            WHERE {where_clause}
+            ORDER BY COALESCE(release_date, ''), LOWER(TRIM(release_name))
+            """,
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "release_id": row["release_id"],
+            "release_name": row["release_name"],
+            "release_date": row["release_date"],
+            "status": row["status"],
+            "project_key": row["project_key"],
+        }
+        for row in rows
+    ]
+
+
+def load_release_versions_snapshot(project_key: str | None = None) -> list[dict[str, Any]]:
+    """Return release snapshot rows for optional project scope."""
+    init_db()
+    where_clause = ""
+    params: list[Any] = []
+    normalized_project_key = str(project_key or "").strip()
+    if normalized_project_key:
+        where_clause = "WHERE project_key = ?"
+        params.append(normalized_project_key)
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT release_id, release_name, release_date, status, project_key
+            FROM release_versions_current
+            {where_clause}
+            ORDER BY COALESCE(release_date, ''), LOWER(TRIM(release_name))
+            """,
+            params,
+        ).fetchall()
+
+    return [
+        {
+            "release_id": row["release_id"],
+            "release_name": row["release_name"],
+            "release_date": row["release_date"],
+            "status": row["status"],
+            "project_key": row["project_key"],
+        }
+        for row in rows
+    ]
+
+
+def normalize_relationship_payload(
+    selected_release_ids: list[str],
+    depends_on_ids: list[str],
+    depended_by_ids: list[str],
+    co_release_ids: list[str],
+    active_release_ids: list[str],
+) -> tuple[list[str], list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, str]]]:
+    """Normalize ids, remove invalid/self links, and build deduplicated edge tuples."""
+    active_ids = set(_normalize_release_ids(active_release_ids))
+    selected_ids = [item for item in _normalize_release_ids(selected_release_ids) if item in active_ids]
+    depends_ids = [item for item in _normalize_release_ids(depends_on_ids) if item in active_ids]
+    depended_by_source_ids = [item for item in _normalize_release_ids(depended_by_ids) if item in active_ids]
+    co_ids = [item for item in _normalize_release_ids(co_release_ids) if item in active_ids]
+
+    dependency_edges: set[tuple[str, str]] = set()
+    incoming_dependency_edges: set[tuple[str, str]] = set()
+    co_release_edges: set[tuple[str, str]] = set()
+
+    for source_id in selected_ids:
+        for target_id in depends_ids:
+            if source_id == target_id:
+                continue
+            dependency_edges.add((source_id, target_id))
+
+        for source_depended_by_id in depended_by_source_ids:
+            if source_depended_by_id == source_id:
+                continue
+            incoming_dependency_edges.add((source_depended_by_id, source_id))
+
+        for peer_id in co_ids:
+            if source_id == peer_id:
+                continue
+            co_release_edges.add((source_id, peer_id))
+            co_release_edges.add((peer_id, source_id))
+
+    return selected_ids, sorted(dependency_edges), sorted(incoming_dependency_edges), sorted(co_release_edges)
+
+
+def _build_relationship_map(
+    active_ids: list[str],
+    rows: list[sqlite3.Row],
+    source_key: str,
+    target_key: str,
+) -> dict[str, list[str]]:
+    result = {release_id: [] for release_id in active_ids}
+    valid_ids = set(active_ids)
+    for row in rows:
+        source_id = str(row[source_key])
+        target_id = str(row[target_key])
+        if source_id not in valid_ids or target_id not in valid_ids:
+            continue
+        result[source_id].append(target_id)
+
+    for source_id, targets in result.items():
+        deduped = sorted(set(targets), key=str.casefold)
+        result[source_id] = deduped
+    return result
+
+
+def get_release_dependencies_map(
+    active_release_ids: list[str],
+    db_path: str = "database.db",
+) -> dict[str, list[str]]:
+    """Return dependency edges filtered to active release ids."""
+    init_release_relationship_schema(db_path)
+    active_ids = _normalize_release_ids(active_release_ids)
+    if not active_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in active_ids)
+    sql = f"""
+        SELECT release_id, depends_on_id
+        FROM release_dependencies
+        WHERE release_id IN ({placeholders})
+          AND depends_on_id IN ({placeholders})
+    """
+    params = [*active_ids, *active_ids]
+    with get_release_relationship_connection(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return _build_relationship_map(active_ids, rows, "release_id", "depends_on_id")
+
+
+def get_release_coreleases_map(
+    active_release_ids: list[str],
+    db_path: str = "database.db",
+) -> dict[str, list[str]]:
+    """Return co-release edges filtered to active release ids."""
+    init_release_relationship_schema(db_path)
+    active_ids = _normalize_release_ids(active_release_ids)
+    if not active_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in active_ids)
+    sql = f"""
+        SELECT release_id, co_release_id
+        FROM release_co_releases
+        WHERE release_id IN ({placeholders})
+          AND co_release_id IN ({placeholders})
+    """
+    params = [*active_ids, *active_ids]
+    with get_release_relationship_connection(db_path) as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return _build_relationship_map(active_ids, rows, "release_id", "co_release_id")
+
+
+def get_release_relationship_maps(
+    active_release_ids: list[str],
+    db_path: str = "database.db",
+) -> dict[str, dict[str, list[str]]]:
+    """Return frontend-ready dependency/co-release map payload."""
+    active_ids = _normalize_release_ids(active_release_ids)
+    return {
+        "dependencies": get_release_dependencies_map(active_ids, db_path=db_path),
+        "co_releases": get_release_coreleases_map(active_ids, db_path=db_path),
+    }
+
+
+def save_release_relationship_updates(
+    selected_release_ids: list[str],
+    depends_on_ids: list[str],
+    depended_by_ids: list[str],
+    co_release_ids: list[str],
+    active_release_ids: list[str] | None = None,
+    db_path: str = "database.db",
+) -> dict[str, int]:
+    """Rewrite relationships for selected releases transactionally and idempotently."""
+    init_release_relationship_schema(db_path)
+    active_ids = _normalize_release_ids(active_release_ids or [*selected_release_ids, *depends_on_ids, *depended_by_ids, *co_release_ids])
+    selected_ids, dependency_edges, incoming_dependency_edges, co_release_edges = normalize_relationship_payload(
+        selected_release_ids=selected_release_ids,
+        depends_on_ids=depends_on_ids,
+        depended_by_ids=depended_by_ids,
+        co_release_ids=co_release_ids,
+        active_release_ids=active_ids,
+    )
+
+    if not selected_ids:
+        return {
+            "selected_count": 0,
+            "dependencies_deleted": 0,
+            "coreleases_deleted": 0,
+            "dependencies_inserted": 0,
+            "coreleases_inserted": 0,
+        }
+
+    dep_deleted = 0
+    co_deleted = 0
+    dep_inserted = 0
+    co_inserted = 0
+    placeholders = ", ".join("?" for _ in selected_ids)
+
+    with get_release_relationship_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN")
+        try:
+            cursor.execute(
+                f"DELETE FROM release_dependencies WHERE release_id IN ({placeholders})",
+                selected_ids,
+            )
+            dep_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+
+            cursor.execute(
+                f"DELETE FROM release_dependencies WHERE depends_on_id IN ({placeholders})",
+                selected_ids,
+            )
+            dep_deleted += cursor.rowcount if cursor.rowcount > 0 else 0
+
+            cursor.execute(
+                f"DELETE FROM release_co_releases WHERE release_id IN ({placeholders}) OR co_release_id IN ({placeholders})",
+                [*selected_ids, *selected_ids],
+            )
+            co_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+
+            for source_id, target_id in dependency_edges:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO release_dependencies(release_id, depends_on_id)
+                    VALUES (?, ?)
+                    """,
+                    (source_id, target_id),
+                )
+                if cursor.rowcount > 0:
+                    dep_inserted += 1
+
+            for source_id, target_id in incoming_dependency_edges:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO release_dependencies(release_id, depends_on_id)
+                    VALUES (?, ?)
+                    """,
+                    (source_id, target_id),
+                )
+                if cursor.rowcount > 0:
+                    dep_inserted += 1
+
+            for source_id, peer_id in co_release_edges:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO release_co_releases(release_id, co_release_id)
+                    VALUES (?, ?)
+                    """,
+                    (source_id, peer_id),
+                )
+                if cursor.rowcount > 0:
+                    co_inserted += 1
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "selected_count": len(selected_ids),
+        "dependencies_deleted": dep_deleted,
+        "coreleases_deleted": co_deleted,
+        "dependencies_inserted": dep_inserted,
+        "coreleases_inserted": co_inserted,
+    }
+
+
+def reconcile_release_relationships(
+    active_release_ids: list[str],
+    db_path: str = "database.db",
+) -> dict[str, int]:
+    """Delete stale release relationships where either endpoint is inactive."""
+    init_release_relationship_schema(db_path)
+    active_ids = _normalize_release_ids(active_release_ids)
+
+    dep_deleted = 0
+    co_deleted = 0
+    with get_release_relationship_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("BEGIN")
+        try:
+            if active_ids:
+                placeholders = ", ".join("?" for _ in active_ids)
+                cursor.execute(
+                    f"DELETE FROM release_dependencies WHERE release_id NOT IN ({placeholders}) OR depends_on_id NOT IN ({placeholders})",
+                    [*active_ids, *active_ids],
+                )
+                dep_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+
+                cursor.execute(
+                    f"DELETE FROM release_co_releases WHERE release_id NOT IN ({placeholders}) OR co_release_id NOT IN ({placeholders})",
+                    [*active_ids, *active_ids],
+                )
+                co_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+            else:
+                cursor.execute("DELETE FROM release_dependencies")
+                dep_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+                cursor.execute("DELETE FROM release_co_releases")
+                co_deleted = cursor.rowcount if cursor.rowcount > 0 else 0
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    return {
+        "dependencies_removed": dep_deleted,
+        "coreleases_removed": co_deleted,
+    }
+
+
 def _ensure_column_exists(conn: sqlite3.Connection, table_name: str, column_name: str, column_sql: str) -> None:
     """Add a missing sqlite column for backward-compatible schema upgrades."""
     rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -583,9 +1074,27 @@ def init_db() -> None:
                 state_value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS release_versions_current (
+                release_id TEXT PRIMARY KEY,
+                project_key TEXT,
+                release_name TEXT NOT NULL,
+                release_date TEXT,
+                status TEXT NOT NULL,
+                released INTEGER NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
+                raw_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets_current(status);
             CREATE INDEX IF NOT EXISTS idx_tickets_assignee ON tickets_current(assignee);
             CREATE INDEX IF NOT EXISTS idx_tickets_updated ON tickets_current(updated);
+            CREATE INDEX IF NOT EXISTS idx_release_versions_name
+                ON release_versions_current(release_name COLLATE NOCASE);
+            CREATE INDEX IF NOT EXISTS idx_release_versions_project
+                ON release_versions_current(project_key);
+            CREATE INDEX IF NOT EXISTS idx_release_versions_date
+                ON release_versions_current(release_date);
             CREATE INDEX IF NOT EXISTS idx_deps_source ON ticket_dependencies_current(source_ticket_key);
             CREATE INDEX IF NOT EXISTS idx_deps_target ON ticket_dependencies_current(target_ticket_key);
             CREATE INDEX IF NOT EXISTS idx_history_ticket ON ticket_history_log(ticket_key, changed_at DESC);
@@ -600,6 +1109,9 @@ def init_db() -> None:
         _ensure_column_exists(conn, "tickets_current", "team_ids_json", "team_ids_json TEXT")
         _ensure_column_exists(conn, "tickets_current", "team_names_json", "team_names_json TEXT")
         conn.commit()
+
+    # Release relationship persistence is intentionally in a dedicated local database file.
+    init_release_relationship_schema()
 
 
 def _to_json(value: Any) -> str:

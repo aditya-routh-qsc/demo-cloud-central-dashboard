@@ -60,16 +60,20 @@ class MainTeamDefaultsTests(unittest.TestCase):
             board_id=None,
         )
 
-    def test_get_releases_uses_existing_services_fetch_release_details(self) -> None:
+    def test_get_releases_excludes_archived_entries_from_response(self) -> None:
         expected = {
             "fetched_at": "2026-06-10T00:00:00+00:00",
             "project_key": "QSYSCLOUD",
-            "releases": [{"name": "Reflect Edge 1.3", "releaseDate": "2026-08-31", "released": False}],
+            "releases": [
+                {"id": "R-1", "name": "Reflect Edge 1.3", "releaseDate": "2026-08-31", "released": False},
+                {"id": "R-2", "name": "Reflect Edge 1.2", "releaseDate": "2026-07-01", "archived": True},
+            ],
         }
         with patch("main.fetch_release_details", return_value=expected) as mocked_fetch:
             payload = main.get_releases(project_key="QSYSCLOUD")
 
-        self.assertEqual(payload, expected)
+        self.assertEqual(len(payload["releases"]), 1)
+        self.assertEqual(payload["releases"][0]["id"], "R-1")
         mocked_fetch.assert_called_once_with(project_key="QSYSCLOUD")
 
 

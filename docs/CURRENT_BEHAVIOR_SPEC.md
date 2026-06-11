@@ -204,7 +204,12 @@ Multi-team behavior:
 - Release tab displays explicit loading, empty, and error states and loads data from /api/releases on first activation.
 - Release tab includes client-side Release Name and Status filters for table rows, with a clear-filters action.
 - Release table includes a left-most multi-row checkbox selection column for batch dependency operations.
-- Release tab includes relationship controls for Depends On and Released Together with searchable multi-select inputs and an Apply action.
+- Release tab includes an Edit button that opens a modal-based dependency editor for selected release rows.
+- Release dependency modal includes Depends On and Depended By tabs showing union relationships across selected releases.
+- Modal relationship rows include release name, release date, tooltip info mapping to selected release context, and per-row remove actions.
+- Modal Add flow supports search, suggestions, multi-select staging, and duplicate-skip behavior without immediate persistence.
+- Modal Reset and Apply Changes controls are disabled until staged changes exist.
+- Reset discards staged edits and restores persisted relationship state; Apply persists staged edits transactionally.
 - Release dependency relationships persist in a local JSON document keyed by Jira release id with depends_on and co_releases arrays.
 - Released Together relationships are maintained bidirectionally in persisted relationship data.
 - Release relationship persistence includes silent stale-id scrubbing against current Jira release ids before render and save.

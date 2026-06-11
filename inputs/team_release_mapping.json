@@ -1,0 +1,18 @@
+{
+    "meta": {
+        "description": "Mapping of teams to their respective releases",
+        "lastUpdated": "11th June, 2026",
+        "structure": {
+            "key": "teamName",
+            "value": "releaseName"
+        }
+    },
+    "data" :{
+        "Reflect Analytics": "Reflect Analytics",
+        "Reflect Edge": "Reflect Edge",
+        "Reflect X": "Reflect X",
+        "ReflectX": "Reflect X",
+        "Infrastructure": "Reflect Infra",
+        "Reflect Features": "Reflect Features"
+    }
+}

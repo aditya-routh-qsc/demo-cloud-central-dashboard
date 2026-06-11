@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import argparse
+from pathlib import Path
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -54,6 +55,8 @@ KANBAN_BOARD_PATTERNS: list[str] = [
     r"^/jira/software/c/projects/[^/]+/boards/(?P<board_id>\d+)",
     r"^/jira/boards/(?P<board_id>\d+)",
 ]
+
+TEAM_RELEASE_MAPPING_PATH = Path(__file__).resolve().parent / "inputs" / "team_release_mapping.json"
 
 
 def _is_truthy(raw_value: str) -> bool:
@@ -1198,6 +1201,187 @@ def create_release_response_json_file(
     }
 
 
+def _normalize_text(value: str) -> str:
+    return str(value or "").strip().casefold()
+
+
+def _canonical_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _normalize_text(value))
+
+
+def _team_id_from_name(team_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(team_name or "").strip().lower()).strip("-")
+    return slug or "unnamed-team"
+
+
+def _load_team_release_mapping() -> dict[str, Any]:
+    if not TEAM_RELEASE_MAPPING_PATH.exists():
+        return {}
+    try:
+        with TEAM_RELEASE_MAPPING_PATH.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    mapping_data = payload.get("data") if isinstance(payload, dict) else None
+    return mapping_data if isinstance(mapping_data, dict) else {}
+
+
+def _mapped_releases_for_team(mapping_value: Any) -> list[str]:
+    if isinstance(mapping_value, str):
+        items = [mapping_value]
+    elif isinstance(mapping_value, list):
+        items = [str(value) for value in mapping_value]
+    else:
+        items = []
+
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for item in items:
+        release_name = str(item or "").strip()
+        if not release_name:
+            continue
+        key = _normalize_text(release_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(release_name)
+    return normalized
+
+
+def _resolve_team_mapping_key(team_identifier: str, mapping: dict[str, Any]) -> str | None:
+    from database import load_team_roster
+
+    requested = str(team_identifier or "").strip()
+    if not requested:
+        return None
+
+    requested_norm = _normalize_text(requested)
+    requested_canonical = _canonical_text(requested)
+
+    for mapping_key in mapping.keys():
+        key_text = str(mapping_key or "").strip()
+        if not key_text:
+            continue
+        if _normalize_text(key_text) == requested_norm:
+            return key_text
+
+    for mapping_key in mapping.keys():
+        key_text = str(mapping_key or "").strip()
+        if not key_text:
+            continue
+        if _canonical_text(key_text) == requested_canonical:
+            return key_text
+        if _team_id_from_name(key_text) == requested_norm:
+            return key_text
+
+    roster = load_team_roster(team_filters=[requested])
+    if roster:
+        resolved_team_name = str((roster[0] or {}).get("team_name") or "").strip()
+        if resolved_team_name and resolved_team_name in mapping:
+            return resolved_team_name
+        resolved_team_name_norm = _normalize_text(resolved_team_name)
+        for mapping_key in mapping.keys():
+            if _normalize_text(str(mapping_key or "")) == resolved_team_name_norm:
+                return str(mapping_key)
+
+    return None
+
+
+def get_team_release_trend(team_identifier: str, project_key: str | None = None) -> dict[str, Any]:
+    """Build chronological release trend data for a team from mapping + active releases."""
+    from database import load_release_versions_snapshot, upsert_release_versions_snapshot
+
+    mapping = _load_team_release_mapping()
+    resolved_mapping_key = _resolve_team_mapping_key(team_identifier, mapping)
+    if not resolved_mapping_key:
+        return {
+            "release_trend": None,
+            "message": "No release trend data available",
+        }
+
+    mapped_release_names = _mapped_releases_for_team(mapping.get(resolved_mapping_key))
+    if not mapped_release_names:
+        return {
+            "release_trend": None,
+            "message": "No release trend data available",
+        }
+
+    release_rows = load_release_versions_snapshot(project_key=project_key)
+
+    if not release_rows:
+        try:
+            release_payload = fetch_release_details(project_key=project_key)
+        except Exception:  # noqa: BLE001
+            release_payload = {
+                "releases": [],
+                "project_key": str(project_key or "").strip(),
+            }
+
+        releases = release_payload.get("releases", []) if isinstance(release_payload.get("releases"), list) else []
+        resolved_project_key = str(release_payload.get("project_key") or project_key or "").strip()
+        if releases and resolved_project_key:
+            upsert_release_versions_snapshot(releases, resolved_project_key)
+        release_rows = load_release_versions_snapshot(project_key=resolved_project_key or project_key)
+
+    if not release_rows:
+        return {
+            "release_trend": None,
+            "message": "No release trend data available",
+        }
+
+    mapped_canonical = [_canonical_text(name) for name in mapped_release_names if _canonical_text(name)]
+    matched_rows: list[dict[str, Any]] = []
+    seen_release_ids: set[str] = set()
+    for row in release_rows:
+        release_name = str(row.get("release_name") or "").strip()
+        release_id = str(row.get("release_id") or "").strip()
+        if not release_name or not release_id:
+            continue
+        row_canonical = _canonical_text(release_name)
+        if not row_canonical:
+            continue
+        if not any(
+            mapping_name in row_canonical or row_canonical in mapping_name
+            for mapping_name in mapped_canonical
+        ):
+            continue
+        if release_id in seen_release_ids:
+            continue
+        seen_release_ids.add(release_id)
+        matched_rows.append(row)
+
+    if not matched_rows:
+        return {
+            "release_trend": None,
+            "message": "No release trend data available",
+        }
+
+    trend_rows = sorted(
+        [
+            {
+                "release_name": str(row.get("release_name") or "").strip(),
+                "release_date": str(row.get("release_date") or "").strip(),
+                "status": str(row.get("status") or "").strip() or "Planned",
+            }
+            for row in matched_rows
+            if str(row.get("release_name") or "").strip() and str(row.get("release_date") or "").strip()
+        ],
+        key=lambda item: item.get("release_date") or "",
+    )
+
+    if not trend_rows:
+        return {
+            "release_trend": None,
+            "message": "No release trend data available",
+        }
+
+    return {
+        "release_trend": trend_rows,
+        "message": None,
+    }
+
+
 
 def fetch_release_details(project_key: str | None = None) -> dict[str, Any]:
     """Fetch Jira release/version details for a project.
@@ -1274,6 +1458,13 @@ def fetch_release_details(project_key: str | None = None) -> dict[str, Any]:
             
             working_endpoint = endpoint_path
             LOGGER.info("Release query succeeded with endpoint: %s", endpoint_path)
+
+            try:
+                from database import upsert_release_versions_snapshot
+
+                upsert_release_versions_snapshot(sorted_versions, resolved_project_key)
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("Failed to cache release snapshot locally: %s", exc)
             
             return {
                 "fetched_at": datetime.now(timezone.utc).isoformat(),

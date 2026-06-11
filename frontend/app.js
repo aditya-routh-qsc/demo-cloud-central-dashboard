@@ -23,7 +23,10 @@ const state = {
   teamsWorkspace: null,
   teamWorkspaceSearch: "",
   selectedTeamId: "",
-  teamDetail: null,
+  teamMembersDetail: null,
+  teamReleaseTrend: null,
+  isMembersLoading: false,
+  isTrendLoading: false,
   jiraDomain: "qsc.atlassian.net",
   charts: {},
   infocomm: {
@@ -37,9 +40,20 @@ const state = {
     loading: false,
     error: "",
     loadedOnce: false,
-    editMode: false,
+    editMode: true,
     selectedRowIds: [],
     relationshipData: {},
+    modal: {
+      isOpen: false,
+      activeTab: "depends_on",
+      applying: false,
+      addOpen: false,
+      addSearch: "",
+      addSelectedIds: [],
+      persistedSnapshot: {},
+      stagedRelationships: {},
+      lastFocusedElement: null,
+    },
     relationshipForm: {
       dependsSearch: "",
       coReleasesSearch: "",
@@ -56,12 +70,12 @@ const state = {
     },
     graph: {
       visible: false,
-      statusFilter: ["Released", "Planned", "Archived", "Overdue"],
+      statusFilter: ["Released", "Planned"],
       instance: null,
     },
   },
   ui: {
-    advancedFiltersOpen: true,
+    advancedFiltersOpen: false,
     sidebarCollapsed: false,
   },
 };
@@ -116,7 +130,6 @@ const el = {
   releaseCoreleasesSearchInput: document.getElementById("releaseCoreleasesSearchInput"),
   releaseCoreleasesSuggestions: document.getElementById("releaseCoreleasesSuggestions"),
   releaseEditToggleBtn: document.getElementById("releaseEditToggleBtn"),
-  releaseApplyRelationshipsBtn: document.getElementById("releaseApplyRelationshipsBtn"),
   releaseGraphToggleBtn: document.getElementById("releaseGraphToggleBtn"),
   releaseTableFiltersWrap: document.getElementById("releaseTableFiltersWrap"),
   releaseNameFilterInput: document.getElementById("releaseNameFilterInput"),
@@ -128,6 +141,22 @@ const el = {
   releaseGraphPanel: document.getElementById("releaseGraphPanel"),
   releaseGraphStatusFilter: document.getElementById("releaseGraphStatusFilter"),
   releaseGraphCanvas: document.getElementById("releaseGraphCanvas"),
+  releaseEditModal: document.getElementById("releaseEditModal"),
+  releaseEditModalCloseBtn: document.getElementById("releaseEditModalCloseBtn"),
+  releaseModalDependsTabBtn: document.getElementById("releaseModalDependsTabBtn"),
+  releaseModalDependedByTabBtn: document.getElementById("releaseModalDependedByTabBtn"),
+  releaseModalTableBody: document.getElementById("releaseModalTableBody"),
+  releaseModalEmptyState: document.getElementById("releaseModalEmptyState"),
+  releaseModalErrorState: document.getElementById("releaseModalErrorState"),
+  releaseModalAddBtn: document.getElementById("releaseModalAddBtn"),
+  releaseModalAddSection: document.getElementById("releaseModalAddSection"),
+  releaseModalAddSearchInput: document.getElementById("releaseModalAddSearchInput"),
+  releaseModalAddSuggestions: document.getElementById("releaseModalAddSuggestions"),
+  releaseModalAddSubmitBtn: document.getElementById("releaseModalAddSubmitBtn"),
+  releaseModalAddCancelBtn: document.getElementById("releaseModalAddCancelBtn"),
+  releaseModalResetBtn: document.getElementById("releaseModalResetBtn"),
+  releaseModalApplyBtn: document.getElementById("releaseModalApplyBtn"),
+  releaseModalApplyState: document.getElementById("releaseModalApplyState"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   globalLoadingIndicator: document.getElementById("globalLoadingIndicator"),
 };
@@ -141,6 +170,10 @@ const loadingUiState = {
 
 const loadingRevealDelayMs = 120;
 const loadingMinVisibleMs = 220;
+const releaseInfoTooltipState = {
+  element: null,
+  anchor: null,
+};
 
 function setGlobalLoadingVisible(visible) {
   if (!el.globalLoadingIndicator) {
@@ -305,6 +338,86 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function getReleaseInfoTooltipElement() {
+  if (releaseInfoTooltipState.element) {
+    return releaseInfoTooltipState.element;
+  }
+  const tooltip = document.createElement("div");
+  tooltip.className = "release-info-tooltip-layer";
+  tooltip.hidden = true;
+  tooltip.setAttribute("role", "tooltip");
+  tooltip.setAttribute("aria-hidden", "true");
+  document.body.appendChild(tooltip);
+  releaseInfoTooltipState.element = tooltip;
+  return tooltip;
+}
+
+function hideReleaseInfoTooltip() {
+  const tooltip = releaseInfoTooltipState.element;
+  if (!tooltip) {
+    return;
+  }
+  tooltip.hidden = true;
+  tooltip.setAttribute("aria-hidden", "true");
+  releaseInfoTooltipState.anchor = null;
+}
+
+function positionReleaseInfoTooltip(anchorElement, pointerX, pointerY) {
+  const tooltip = getReleaseInfoTooltipElement();
+  if (tooltip.hidden) {
+    return;
+  }
+
+  const viewportPadding = 12;
+  const gap = 10;
+  const anchorRect = anchorElement?.getBoundingClientRect ? anchorElement.getBoundingClientRect() : null;
+
+  let left = Number.isFinite(pointerX)
+    ? Number(pointerX) + 14
+    : (anchorRect ? anchorRect.left + (anchorRect.width / 2) : window.innerWidth / 2);
+  let top = Number.isFinite(pointerY)
+    ? Number(pointerY) + 14
+    : (anchorRect ? anchorRect.top - gap : viewportPadding);
+
+  const tooltipRect = tooltip.getBoundingClientRect();
+
+  if (left + tooltipRect.width + viewportPadding > window.innerWidth) {
+    left = window.innerWidth - tooltipRect.width - viewportPadding;
+  }
+  if (left < viewportPadding) {
+    left = viewportPadding;
+  }
+
+  if (top + tooltipRect.height + viewportPadding > window.innerHeight) {
+    if (anchorRect) {
+      top = anchorRect.top - tooltipRect.height - gap;
+    } else {
+      top = window.innerHeight - tooltipRect.height - viewportPadding;
+    }
+  }
+  if (top < viewportPadding) {
+    top = viewportPadding;
+  }
+
+  tooltip.style.left = `${Math.round(left)}px`;
+  tooltip.style.top = `${Math.round(top)}px`;
+}
+
+function showReleaseInfoTooltip(anchorElement, tooltipText, pointerX, pointerY) {
+  const text = String(tooltipText || "").trim();
+  if (!text) {
+    hideReleaseInfoTooltip();
+    return;
+  }
+
+  const tooltip = getReleaseInfoTooltipElement();
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  tooltip.setAttribute("aria-hidden", "false");
+  releaseInfoTooltipState.anchor = anchorElement || null;
+  positionReleaseInfoTooltip(anchorElement, pointerX, pointerY);
 }
 
 function uniqueValues(values) {
@@ -913,15 +1026,72 @@ function renderTeamsWorkspace() {
   for (const card of selectableCards) {
     card.addEventListener("click", () => {
       state.selectedTeamId = String(card.getAttribute("data-team-id") || "").trim();
-      state.teamDetail = null;
+      state.teamMembersDetail = null;
+      state.teamReleaseTrend = null;
+      state.isMembersLoading = true;
+      state.isTrendLoading = true;
       renderTeamsWorkspace();
       renderTeamDetailPanels();
+      void loadSelectedTeamDetail(state.selectedTeamId);
     });
   }
 
   if (window.lucide) {
     window.lucide.createIcons();
   }
+}
+
+async function loadSelectedTeamDetail(teamId) {
+  const requestedTeamId = String(teamId || "").trim();
+  if (!requestedTeamId) {
+    state.teamMembersDetail = null;
+    state.teamReleaseTrend = null;
+    state.isMembersLoading = false;
+    state.isTrendLoading = false;
+    renderTeamDetailPanels();
+    return;
+  }
+
+  state.isMembersLoading = false;
+  state.isTrendLoading = true;
+  renderTeamDetailPanels();
+
+  void apiGet(`/api/teams/${encodeURIComponent(requestedTeamId)}`, { trackLoading: false })
+    .then((payload) => {
+      if (String(state.selectedTeamId || "").trim() !== requestedTeamId) {
+        return;
+      }
+      state.teamMembersDetail = payload;
+      renderTeamDetailPanels();
+    })
+    .catch(() => {
+      if (String(state.selectedTeamId || "").trim() !== requestedTeamId) {
+        return;
+      }
+      state.teamMembersDetail = { error: "Failed to load team details." };
+      renderTeamDetailPanels();
+    });
+
+  void apiGet(`/api/teams/${encodeURIComponent(requestedTeamId)}/release-trend`, { trackLoading: false })
+    .then((payload) => {
+      if (String(state.selectedTeamId || "").trim() !== requestedTeamId) {
+        return;
+      }
+      state.teamReleaseTrend = payload;
+    })
+    .catch(() => {
+      if (String(state.selectedTeamId || "").trim() !== requestedTeamId) {
+        return;
+      }
+      state.teamReleaseTrend = { release_trend: null, message: "No release trend data available" };
+    })
+    .finally(() => {
+      if (String(state.selectedTeamId || "").trim() !== requestedTeamId) {
+        return;
+      }
+      state.isTrendLoading = false;
+      renderTeamDetailPanels();
+    });
 }
 
 function renderTeamDetailPanels() {
@@ -937,7 +1107,22 @@ function renderTeamDetailPanels() {
   }
 
   const teamName = `${selectedTeam.display_name || selectedTeam.team_name || "Team"}`;
-  const members = Array.isArray(selectedTeam.members) ? selectedTeam.members : [];
+  if (state.teamMembersDetail && state.teamMembersDetail.error) {
+    el.teamDetailTitle.textContent = `${teamName} Details`;
+    if (el.teamDetailContent) {
+      el.teamDetailContent.innerHTML = "<p class='text-danger'>Failed to load team details.</p>";
+    }
+    return;
+  }
+
+  const detail = state.teamMembersDetail && typeof state.teamMembersDetail === "object" ? state.teamMembersDetail : {};
+  const trendDetail = state.teamReleaseTrend && typeof state.teamReleaseTrend === "object" ? state.teamReleaseTrend : {};
+  const detailTeam = detail.team && typeof detail.team === "object" ? detail.team : {};
+  const members = Array.isArray(detailTeam.members)
+    ? detailTeam.members
+    : (Array.isArray(selectedTeam.members) ? selectedTeam.members : []);
+  const releaseTrend = Array.isArray(trendDetail.release_trend) ? trendDetail.release_trend : [];
+  const releaseTrendMessage = String(trendDetail.message || "").trim();
 
   el.teamDetailTitle.textContent = `${teamName} Details`;
 
@@ -974,36 +1159,70 @@ function renderTeamDetailPanels() {
     )
   );
 
+  const trendRows = releaseTrend.map((item) => {
+    const releaseName = escapeHtml(item.release_name || "-");
+    const releaseDate = escapeHtml(formatReleaseDate(item.release_date));
+    const rawStatus = String(item.status || "").trim();
+    const statusLabel = escapeHtml(rawStatus || "-");
+    const statusClass = getReleaseStatusClass(rawStatus);
+    return `<tr>
+      <td>${releaseName}</td>
+      <td>${releaseDate}</td>
+      <td><span class="${statusClass}">${statusLabel}</span></td>
+    </tr>`;
+  });
+
   if (el.teamDetailContent) {
     el.teamDetailContent.innerHTML = `
-      <div class="team-meta-row muted">
-        <span><strong>Members:</strong> ${members.length}</span>
-        <span><strong>Locations:</strong> ${escapeHtml(uniqueLocations.join(", ") || "-")}</span>
-        <span><strong>Contractors:</strong> ${escapeHtml(uniqueContractors.join(", ") || "-")}</span>
+      <div class="team-detail-stack">
+        <section class="team-detail-panel" aria-label="Team member details panel">
+          <h4>Team Member Details</h4>
+          <div class="team-meta-row muted">
+            <span><strong>Members:</strong> ${members.length}</span>
+            <span><strong>Locations:</strong> ${escapeHtml(uniqueLocations.join(", ") || "-")}</span>
+            <span><strong>Contractors:</strong> ${escapeHtml(uniqueContractors.join(", ") || "-")}</span>
+          </div>
+          ${memberRows.length
+            ? `<div class="table-wrap team-member-table-wrap">
+                <table class="team-member-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Skillset</th>
+                      <th>Location</th>
+                      <th>Contractor</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>${memberRows.join("")}</tbody>
+                </table>
+              </div>`
+            : "<p class='muted'>No team members available.</p>"}
+        </section>
+        <section class="team-detail-panel" aria-label="Release trend panel">
+          <h4>Release Trend</h4>
+          ${state.isTrendLoading
+            ? "<p class='muted'>Loading release trend...</p>"
+            : trendRows.length
+            ? `<div class="table-wrap team-member-table-wrap">
+                <table class="team-member-table">
+                  <thead>
+                    <tr>
+                      <th>Release Name</th>
+                      <th>Release Date</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>${trendRows.join("")}</tbody>
+                </table>
+              </div>`
+            : `<p class='muted'>${escapeHtml(releaseTrendMessage || "No release trend data available")}</p>`}
+        </section>
       </div>
-      <h4>Team Members</h4>
-      ${memberRows.length
-        ? `<div class="table-wrap team-member-table-wrap">
-            <table class="team-member-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Skillset</th>
-                  <th>Location</th>
-                  <th>Contractor</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody>${memberRows.join("")}</tbody>
-            </table>
-          </div>`
-        : "<p class='muted'>No team members available.</p>"}
     `;
   }
 }
-
-const RELEASE_RELATIONSHIPS_STORAGE_KEY = "release.relationships.v1";
 
 function formatReleaseDate(rawValue) {
   const value = String(rawValue || "").trim();
@@ -1161,7 +1380,7 @@ function normalizeReleaseRows(payload) {
         status: computeReleaseStatus(release),
       };
     })
-    .filter(Boolean);
+    .filter((row) => row && String(row.status || "") !== "Archived");
 }
 
 function getReleaseRowByIdMap() {
@@ -1225,31 +1444,62 @@ function normalizeReleaseRelationshipMap(rawMap, validIdsSet) {
   return normalized;
 }
 
-function saveReleaseRelationshipsToLocalJson(relationshipMap) {
-  try {
-    localStorage.setItem(RELEASE_RELATIONSHIPS_STORAGE_KEY, JSON.stringify(relationshipMap || {}, null, 2));
-  } catch (_error) {
-    // Ignore storage write failures and continue with in-memory state.
-  }
-}
-
-function loadReleaseRelationshipsFromLocalJson(validIdsSet) {
-  try {
-    const raw = localStorage.getItem(RELEASE_RELATIONSHIPS_STORAGE_KEY);
-    if (!raw) {
-      return normalizeReleaseRelationshipMap({}, validIdsSet);
-    }
-    const parsed = JSON.parse(raw);
-    return normalizeReleaseRelationshipMap(parsed, validIdsSet);
-  } catch (_error) {
-    return normalizeReleaseRelationshipMap({}, validIdsSet);
-  }
-}
-
 function scrubReleaseRelationshipsAgainstRows() {
   const validIdsSet = getValidReleaseIdsSet();
   state.release.relationshipData = normalizeReleaseRelationshipMap(state.release.relationshipData, validIdsSet);
-  saveReleaseRelationshipsToLocalJson(state.release.relationshipData);
+}
+
+async function loadReleaseRelationshipsFromApi() {
+  const payload = await apiGet("/api/releases/relationships", { trackLoading: false });
+  const validIdsSet = getValidReleaseIdsSet();
+  const relationships = payload && typeof payload.relationships === "object" ? payload.relationships : {};
+  const dependencies = relationships && typeof relationships.dependencies === "object" ? relationships.dependencies : {};
+  const coReleases = relationships && typeof relationships.co_releases === "object" ? relationships.co_releases : {};
+
+  const combined = {};
+  for (const id of validIdsSet) {
+    combined[id] = {
+      depends_on: Array.isArray(dependencies[id]) ? dependencies[id] : [],
+      co_releases: Array.isArray(coReleases[id]) ? coReleases[id] : [],
+    };
+  }
+  return normalizeReleaseRelationshipMap(combined, validIdsSet);
+}
+
+async function saveReleaseRelationshipsToApi(selectedRowIds, dependsOnIds, coReleaseIds) {
+  const body = {
+    selected_release_ids: uniqueValues(selectedRowIds || []),
+    depends_on_ids: uniqueValues(dependsOnIds || []),
+    co_release_ids: uniqueValues(coReleaseIds || []),
+    active_release_ids: Array.from(getValidReleaseIdsSet()),
+  };
+  const response = await fetch("/api/releases/relationships", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  const payload = await response.json();
+  const relationships = payload && typeof payload.relationships === "object" ? payload.relationships : {};
+  const dependencies = relationships && typeof relationships.dependencies === "object" ? relationships.dependencies : {};
+  const coReleases = relationships && typeof relationships.co_releases === "object" ? relationships.co_releases : {};
+  return normalizeReleaseRelationshipMap(
+    Object.fromEntries(
+      Array.from(getValidReleaseIdsSet()).map((id) => [
+        id,
+        {
+          depends_on: Array.isArray(dependencies[id]) ? dependencies[id] : [],
+          co_releases: Array.isArray(coReleases[id]) ? coReleases[id] : [],
+        },
+      ])
+    ),
+    getValidReleaseIdsSet()
+  );
 }
 
 function setReleasePanelState(message, options = {}) {
@@ -1267,6 +1517,398 @@ function setReleaseRelationshipFeedback(message, tone = "muted") {
   }
   el.releaseRelationshipFeedback.className = `release-relationship-feedback ${tone}`;
   el.releaseRelationshipFeedback.textContent = message;
+}
+
+function cloneReleaseRelationshipMap(map) {
+  return normalizeReleaseRelationshipMap(JSON.parse(JSON.stringify(map || {})), getValidReleaseIdsSet());
+}
+
+function releaseRelationshipMapsEqual(leftMap, rightMap) {
+  return JSON.stringify(cloneReleaseRelationshipMap(leftMap)) === JSON.stringify(cloneReleaseRelationshipMap(rightMap));
+}
+
+function getReleaseRelationshipSourceMap(mapInput) {
+  return mapInput && typeof mapInput === "object" ? mapInput : state.release.relationshipData;
+}
+
+function getReleaseIncomingDependenciesMap(mapInput) {
+  const sourceMap = getReleaseRelationshipSourceMap(mapInput);
+  const incoming = {};
+  for (const id of Object.keys(sourceMap || {})) {
+    incoming[id] = [];
+  }
+  for (const [sourceId, entry] of Object.entries(sourceMap || {})) {
+    for (const targetId of entry?.depends_on || []) {
+      if (!incoming[targetId]) {
+        incoming[targetId] = [];
+      }
+      incoming[targetId].push(String(sourceId));
+    }
+  }
+  for (const id of Object.keys(incoming)) {
+    incoming[id] = uniqueValues(incoming[id] || []).sort(compareReleaseTextValues);
+  }
+  return incoming;
+}
+
+function getReleaseModalUnionIds(tabKey, relationshipMapInput) {
+  const selectedSet = getReleaseSelectedRowIdsSet();
+  const relationMap = getReleaseRelationshipSourceMap(relationshipMapInput);
+  const unionSet = new Set();
+
+  if (tabKey === "depends_on") {
+    for (const selectedId of selectedSet) {
+      const entry = relationMap[selectedId] || createEmptyReleaseRelationshipEntry();
+      for (const targetId of entry.depends_on || []) {
+        unionSet.add(String(targetId));
+      }
+    }
+  } else {
+    const incomingMap = getReleaseIncomingDependenciesMap(relationMap);
+    for (const selectedId of selectedSet) {
+      for (const sourceId of incomingMap[selectedId] || []) {
+        unionSet.add(String(sourceId));
+      }
+    }
+  }
+
+  return Array.from(unionSet).sort(compareReleaseTextValues);
+}
+
+function buildReleaseModalInfoText(tabKey, rowId, relationshipMapInput) {
+  const selectedIds = Array.from(getReleaseSelectedRowIdsSet());
+  const rowById = getReleaseRowByIdMap();
+  const relationMap = getReleaseRelationshipSourceMap(relationshipMapInput);
+  const mappedSelected = [];
+
+  if (tabKey === "depends_on") {
+    for (const selectedId of selectedIds) {
+      const entry = relationMap[selectedId] || createEmptyReleaseRelationshipEntry();
+      if ((entry.depends_on || []).includes(rowId)) {
+        const row = rowById.get(selectedId);
+        mappedSelected.push(row ? row.name : selectedId);
+      }
+    }
+    const summary = mappedSelected.length ? mappedSelected.join(", ") : "none";
+    return `Selected releases depending on this row: ${summary}`;
+  }
+
+  const sourceEntry = relationMap[rowId] || createEmptyReleaseRelationshipEntry();
+  for (const selectedId of selectedIds) {
+    if ((sourceEntry.depends_on || []).includes(selectedId)) {
+      const row = rowById.get(selectedId);
+      mappedSelected.push(row ? row.name : selectedId);
+    }
+  }
+  const summary = mappedSelected.length ? mappedSelected.join(", ") : "none";
+  return `This row depends on selected release(s): ${summary}`;
+}
+
+function applyReleaseModalRemoveRow(rowId) {
+  const tabKey = state.release.modal.activeTab;
+  const selectedIds = Array.from(getReleaseSelectedRowIdsSet());
+  const staged = cloneReleaseRelationshipMap(state.release.modal.stagedRelationships);
+
+  if (tabKey === "depends_on") {
+    for (const selectedId of selectedIds) {
+      const entry = staged[selectedId] || createEmptyReleaseRelationshipEntry();
+      entry.depends_on = uniqueValues(entry.depends_on || []).filter((id) => id !== rowId);
+      staged[selectedId] = entry;
+    }
+  } else {
+    const sourceEntry = staged[rowId] || createEmptyReleaseRelationshipEntry();
+    sourceEntry.depends_on = uniqueValues(sourceEntry.depends_on || []).filter((id) => !selectedIds.includes(id));
+    staged[rowId] = sourceEntry;
+  }
+
+  state.release.modal.stagedRelationships = normalizeReleaseRelationshipMap(staged, getValidReleaseIdsSet());
+  renderReleaseEditModal();
+}
+
+function toggleReleaseModalAddSelection(releaseId) {
+  const set = new Set(uniqueValues(state.release.modal.addSelectedIds || []));
+  if (set.has(releaseId)) {
+    set.delete(releaseId);
+  } else {
+    set.add(releaseId);
+  }
+  state.release.modal.addSelectedIds = Array.from(set).sort(compareReleaseTextValues);
+  renderReleaseModalAddSuggestions();
+}
+
+function renderReleaseModalAddSuggestions() {
+  if (!el.releaseModalAddSuggestions) {
+    return;
+  }
+  const query = String(state.release.modal.addSearch || "").trim().toLowerCase();
+  const selectedRowSet = getReleaseSelectedRowIdsSet();
+  const selectedAddSet = new Set(uniqueValues(state.release.modal.addSelectedIds || []));
+  const rows = (state.release.rows || [])
+    .filter((row) => !selectedRowSet.has(String(row.id)))
+    .filter((row) => !query || getReleaseRelationshipLabel(row).toLowerCase().includes(query));
+
+  if (!rows.length) {
+    el.releaseModalAddSuggestions.innerHTML = "<div class='release-suggestion-empty muted'>No matching releases.</div>";
+    return;
+  }
+
+  el.releaseModalAddSuggestions.innerHTML = rows
+    .map(
+      (row) => `<button type="button" class="release-suggestion-item ${selectedAddSet.has(String(row.id)) ? "is-selected" : ""}" data-release-id="${escapeHtml(String(row.id))}">${escapeHtml(getReleaseRelationshipLabel(row))}</button>`
+    )
+    .join("");
+
+  for (const button of el.releaseModalAddSuggestions.querySelectorAll(".release-suggestion-item")) {
+    button.addEventListener("click", () => {
+      const releaseId = String(button.getAttribute("data-release-id") || "").trim();
+      if (!releaseId) {
+        return;
+      }
+      toggleReleaseModalAddSelection(releaseId);
+    });
+  }
+}
+
+function applyReleaseModalAddSubmit() {
+  const addIds = uniqueValues(state.release.modal.addSelectedIds || []);
+  if (!addIds.length) {
+    state.release.modal.addOpen = false;
+    renderReleaseEditModal();
+    return;
+  }
+
+  const tabKey = state.release.modal.activeTab;
+  const selectedIds = Array.from(getReleaseSelectedRowIdsSet());
+  const staged = cloneReleaseRelationshipMap(state.release.modal.stagedRelationships);
+
+  if (tabKey === "depends_on") {
+    for (const selectedId of selectedIds) {
+      const entry = staged[selectedId] || createEmptyReleaseRelationshipEntry();
+      entry.depends_on = uniqueValues([...(entry.depends_on || []), ...addIds])
+        .filter((id) => id !== selectedId)
+        .sort(compareReleaseTextValues);
+      staged[selectedId] = entry;
+    }
+  } else {
+    for (const sourceId of addIds) {
+      const entry = staged[sourceId] || createEmptyReleaseRelationshipEntry();
+      entry.depends_on = uniqueValues([...(entry.depends_on || []), ...selectedIds])
+        .filter((id) => id !== sourceId)
+        .sort(compareReleaseTextValues);
+      staged[sourceId] = entry;
+    }
+  }
+
+  state.release.modal.stagedRelationships = normalizeReleaseRelationshipMap(staged, getValidReleaseIdsSet());
+  state.release.modal.addOpen = false;
+  state.release.modal.addSearch = "";
+  state.release.modal.addSelectedIds = [];
+  renderReleaseEditModal();
+}
+
+function getReleaseModalApplyPayload() {
+  const selectedIds = Array.from(getReleaseSelectedRowIdsSet());
+  const relationMap = getReleaseRelationshipSourceMap(state.release.modal.stagedRelationships);
+  const dependsSet = new Set();
+  for (const selectedId of selectedIds) {
+    for (const targetId of relationMap[selectedId]?.depends_on || []) {
+      dependsSet.add(String(targetId));
+    }
+  }
+
+  const dependedBySet = new Set();
+  for (const [sourceId, entry] of Object.entries(relationMap || {})) {
+    for (const targetId of entry?.depends_on || []) {
+      if (selectedIds.includes(String(targetId)) && !selectedIds.includes(String(sourceId))) {
+        dependedBySet.add(String(sourceId));
+      }
+    }
+  }
+
+  return {
+    selected_release_ids: selectedIds,
+    depends_on_ids: Array.from(dependsSet).sort(compareReleaseTextValues),
+    depended_by_ids: Array.from(dependedBySet).sort(compareReleaseTextValues),
+    co_release_ids: [],
+    active_release_ids: Array.from(getValidReleaseIdsSet()),
+  };
+}
+
+async function applyReleaseModalChanges() {
+  if (state.release.modal.applying || !el.releaseModalApplyBtn) {
+    return;
+  }
+  state.release.modal.applying = true;
+  renderReleaseEditModal();
+
+  try {
+    const response = await fetch("/api/releases/relationships", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(getReleaseModalApplyPayload()),
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+    const payload = await response.json();
+    const relationships = payload && typeof payload.relationships === "object" ? payload.relationships : {};
+    const dependencies = relationships && typeof relationships.dependencies === "object" ? relationships.dependencies : {};
+    const coReleases = relationships && typeof relationships.co_releases === "object" ? relationships.co_releases : {};
+    state.release.relationshipData = normalizeReleaseRelationshipMap(
+      Object.fromEntries(
+        Array.from(getValidReleaseIdsSet()).map((id) => [
+          id,
+          {
+            depends_on: Array.isArray(dependencies[id]) ? dependencies[id] : [],
+            co_releases: Array.isArray(coReleases[id]) ? coReleases[id] : [],
+          },
+        ])
+      ),
+      getValidReleaseIdsSet()
+    );
+
+    state.release.modal.persistedSnapshot = cloneReleaseRelationshipMap(state.release.relationshipData);
+    state.release.modal.stagedRelationships = cloneReleaseRelationshipMap(state.release.relationshipData);
+    if (el.releaseModalApplyState) {
+      el.releaseModalApplyState.className = "release-modal-inline-state muted";
+      el.releaseModalApplyState.textContent = "Changes applied.";
+    }
+    setReleaseRelationshipFeedback("Dependency updates applied successfully.", "muted");
+    renderReleaseGraph();
+    renderReleaseTable();
+  } catch (error) {
+    if (el.releaseModalApplyState) {
+      el.releaseModalApplyState.className = "release-modal-inline-state text-danger";
+      el.releaseModalApplyState.textContent = `Failed to apply changes: ${String(error?.message || error)}`;
+    }
+    setReleaseRelationshipFeedback(`Failed to apply relationships: ${String(error?.message || error)}`, "text-danger");
+  } finally {
+    state.release.modal.applying = false;
+    renderReleaseEditModal();
+  }
+}
+
+function resetReleaseModalStagedChanges() {
+  state.release.modal.stagedRelationships = cloneReleaseRelationshipMap(state.release.modal.persistedSnapshot);
+  if (el.releaseModalApplyState) {
+    el.releaseModalApplyState.className = "release-modal-inline-state muted";
+    el.releaseModalApplyState.textContent = "";
+  }
+  renderReleaseEditModal();
+}
+
+function closeReleaseEditModal() {
+  state.release.modal.isOpen = false;
+  state.release.modal.addOpen = false;
+  state.release.modal.addSearch = "";
+  state.release.modal.addSelectedIds = [];
+  hideReleaseInfoTooltip();
+  if (el.releaseEditModal) {
+    el.releaseEditModal.hidden = true;
+    el.releaseEditModal.setAttribute("aria-hidden", "true");
+  }
+  if (state.release.modal.lastFocusedElement && typeof state.release.modal.lastFocusedElement.focus === "function") {
+    state.release.modal.lastFocusedElement.focus();
+  }
+}
+
+function renderReleaseEditModal() {
+  if (!el.releaseEditModal || !el.releaseModalTableBody) {
+    return;
+  }
+
+  const modalState = state.release.modal;
+  const isDirty = !releaseRelationshipMapsEqual(modalState.stagedRelationships, modalState.persistedSnapshot);
+
+  if (!modalState.isOpen) {
+    hideReleaseInfoTooltip();
+    el.releaseEditModal.hidden = true;
+    el.releaseEditModal.setAttribute("aria-hidden", "true");
+    return;
+  }
+
+  el.releaseEditModal.hidden = false;
+  el.releaseEditModal.setAttribute("aria-hidden", "false");
+
+  if (el.releaseModalDependsTabBtn && el.releaseModalDependedByTabBtn) {
+    const dependsActive = modalState.activeTab === "depends_on";
+    el.releaseModalDependsTabBtn.classList.toggle("is-active", dependsActive);
+    el.releaseModalDependedByTabBtn.classList.toggle("is-active", !dependsActive);
+    el.releaseModalDependsTabBtn.setAttribute("aria-selected", String(dependsActive));
+    el.releaseModalDependedByTabBtn.setAttribute("aria-selected", String(!dependsActive));
+  }
+
+  const unionIds = getReleaseModalUnionIds(modalState.activeTab, modalState.stagedRelationships);
+  const rowById = getReleaseRowByIdMap();
+  const tableRows = unionIds
+    .map((id) => rowById.get(id))
+    .filter(Boolean)
+    .map((row) => {
+      const infoText = buildReleaseModalInfoText(modalState.activeTab, String(row.id), modalState.stagedRelationships);
+      return `<tr>
+        <td>${escapeHtml(String(row.name || row.id))}</td>
+        <td>${escapeHtml(formatReleaseDate(row.releaseDate))}</td>
+        <td><button type="button" class="release-modal-info-icon" aria-label="Dependency info: ${escapeHtml(infoText)}" data-tooltip="${escapeHtml(infoText)}">i</button></td>
+        <td><button type="button" class="release-modal-remove-btn" data-release-id="${escapeHtml(String(row.id))}">Remove</button></td>
+      </tr>`;
+    });
+
+  el.releaseModalTableBody.innerHTML = tableRows.join("");
+  if (el.releaseModalEmptyState) {
+    el.releaseModalEmptyState.hidden = tableRows.length > 0;
+  }
+
+  for (const button of el.releaseModalTableBody.querySelectorAll(".release-modal-remove-btn")) {
+    button.addEventListener("click", () => {
+      const rowId = String(button.getAttribute("data-release-id") || "").trim();
+      if (!rowId) {
+        return;
+      }
+      applyReleaseModalRemoveRow(rowId);
+    });
+  }
+
+  if (el.releaseModalAddSection) {
+    el.releaseModalAddSection.hidden = !modalState.addOpen;
+  }
+  if (el.releaseModalAddSearchInput) {
+    el.releaseModalAddSearchInput.value = modalState.addSearch;
+  }
+  if (modalState.addOpen) {
+    renderReleaseModalAddSuggestions();
+  }
+
+  if (el.releaseModalResetBtn) {
+    el.releaseModalResetBtn.disabled = !isDirty || modalState.applying;
+  }
+  if (el.releaseModalApplyBtn) {
+    el.releaseModalApplyBtn.disabled = !isDirty || modalState.applying;
+    el.releaseModalApplyBtn.textContent = modalState.applying ? "Applying..." : "Apply Changes";
+  }
+}
+
+function openReleaseEditModal() {
+  const selectedSet = getReleaseSelectedRowIdsSet();
+  if (!selectedSet.size) {
+    setReleaseRelationshipFeedback("Select at least one release row to edit dependencies.", "muted");
+    return;
+  }
+  state.release.modal.lastFocusedElement = document.activeElement;
+  state.release.modal.isOpen = true;
+  state.release.modal.activeTab = "depends_on";
+  state.release.modal.addOpen = false;
+  state.release.modal.addSearch = "";
+  state.release.modal.addSelectedIds = [];
+  state.release.modal.persistedSnapshot = cloneReleaseRelationshipMap(state.release.relationshipData);
+  state.release.modal.stagedRelationships = cloneReleaseRelationshipMap(state.release.relationshipData);
+  if (el.releaseModalApplyState) {
+    el.releaseModalApplyState.className = "release-modal-inline-state muted";
+    el.releaseModalApplyState.textContent = "";
+  }
+  renderReleaseEditModal();
 }
 
 function getReleaseStatusClass(statusValue) {
@@ -1299,7 +1941,8 @@ function getReleaseFilteredRows(rowsInput) {
 
   return rows.filter((row) => {
     const nameMatches = !nameQuery || String(row.name || "").toLowerCase().includes(nameQuery);
-    const statusMatches = !status || String(row.status || "") === status;
+    const rowStatus = String(row.status || "").trim();
+    const statusMatches = !status || rowStatus === status || (status === "Planned" && rowStatus === "Overdue");
     return nameMatches && statusMatches;
   });
 }
@@ -1356,21 +1999,24 @@ function syncReleasePanelVisibility(hasRows) {
     el.releaseTableFiltersWrap.hidden = graphVisible;
   }
   if (el.releaseRelationshipControls) {
-    el.releaseRelationshipControls.hidden = graphVisible || !state.release.editMode;
-  }
-  if (el.releaseApplyRelationshipsBtn) {
-    el.releaseApplyRelationshipsBtn.hidden = graphVisible || !state.release.editMode;
+    el.releaseRelationshipControls.hidden = true;
   }
   if (el.releaseEditToggleBtn) {
-    el.releaseEditToggleBtn.textContent = state.release.editMode ? "Exit Edit" : "Edit: Off";
-    el.releaseEditToggleBtn.classList.toggle("is-active", state.release.editMode);
+    const selectedCount = getReleaseSelectedRowIdsSet().size;
+    el.releaseEditToggleBtn.textContent = "Edit";
+    el.releaseEditToggleBtn.hidden = selectedCount === 0;
+    el.releaseEditToggleBtn.disabled = graphVisible || !rowsAvailable || selectedCount === 0;
+    el.releaseEditToggleBtn.setAttribute("aria-disabled", String(el.releaseEditToggleBtn.disabled));
+    el.releaseEditToggleBtn.title = selectedCount > 0
+      ? "Edit dependencies for selected releases"
+      : "Select at least one release row to open dependency editor";
   }
   if (el.releaseGraphToggleBtn) {
     el.releaseGraphToggleBtn.textContent = graphVisible ? "Hide Graph" : "Show Graph";
   }
   const selectHeader = document.querySelector("#release .release-select-col");
   if (selectHeader) {
-    selectHeader.hidden = !state.release.editMode;
+    selectHeader.hidden = false;
   }
 }
 
@@ -1495,8 +2141,9 @@ function syncReleaseGraphStatusFilterInput() {
   if (!el.releaseGraphStatusFilter) {
     return;
   }
-  const values = uniqueValues(state.release.graph.statusFilter || []);
-  state.release.graph.statusFilter = values.length ? values : ["Released", "Planned", "Archived", "Overdue"];
+  const values = uniqueValues(state.release.graph.statusFilter || [])
+    .filter((value) => value === "Released" || value === "Planned");
+  state.release.graph.statusFilter = values.length ? values : ["Released", "Planned"];
   setSelectedValues(el.releaseGraphStatusFilter, state.release.graph.statusFilter);
 }
 
@@ -1506,8 +2153,14 @@ function renderReleaseStatusFilterOptions() {
   }
 
   const rows = Array.isArray(state.release.rows) ? state.release.rows : [];
-  const statuses = Array.from(new Set(rows.map((row) => String(row.status || "").trim()).filter(Boolean)))
-    .sort((left, right) => compareReleaseTextValues(left, right));
+  const statusSet = new Set(rows.map((row) => String(row.status || "").trim()).filter(Boolean));
+  const statuses = [];
+  if (statusSet.has("Released")) {
+    statuses.push("Released");
+  }
+  if (statusSet.has("Planned") || statusSet.has("Overdue")) {
+    statuses.push("Planned");
+  }
 
   const options = ['<option value="">All statuses</option>'];
   for (const status of statuses) {
@@ -1590,7 +2243,7 @@ function handleReleaseSortHeaderClick(columnKey) {
   renderReleaseTable();
 }
 
-function applyReleaseRelationshipsToSelectedRows() {
+async function applyReleaseRelationshipsToSelectedRows() {
   const selectedRowSet = getReleaseSelectedRowIdsSet();
   if (!selectedRowSet.size) {
     setReleaseRelationshipFeedback("Select at least one release row before applying relationships.", "muted");
@@ -1600,43 +2253,56 @@ function applyReleaseRelationshipsToSelectedRows() {
   const dependsOnIds = uniqueValues(state.release.relationshipForm.dependsOnSelected || []);
   const coReleaseIds = uniqueValues(state.release.relationshipForm.coReleasesSelected || []);
 
-  const validIds = getValidReleaseIdsSet();
-  const nextMap = normalizeReleaseRelationshipMap(state.release.relationshipData, validIds);
-
-  for (const rowId of selectedRowSet) {
-    if (!nextMap[rowId]) {
-      nextMap[rowId] = createEmptyReleaseRelationshipEntry();
-    }
-    nextMap[rowId].depends_on = dependsOnIds.filter((id) => id !== rowId && validIds.has(id));
-    nextMap[rowId].co_releases = coReleaseIds.filter((id) => id !== rowId && validIds.has(id));
+  try {
+    state.release.relationshipData = await saveReleaseRelationshipsToApi(
+      Array.from(selectedRowSet),
+      dependsOnIds,
+      coReleaseIds,
+    );
+    setReleaseRelationshipFeedback(`Applied relationships to ${selectedRowSet.size} selected release${selectedRowSet.size === 1 ? "" : "s"}.`, "muted");
+    renderReleaseGraph();
+    renderReleaseTable();
+  } catch (error) {
+    setReleaseRelationshipFeedback(`Failed to apply relationships: ${String(error?.message || error)}`, "text-danger");
   }
-
-  state.release.relationshipData = normalizeReleaseRelationshipMap(nextMap, validIds);
-  saveReleaseRelationshipsToLocalJson(state.release.relationshipData);
-  setReleaseRelationshipFeedback(`Applied relationships to ${selectedRowSet.size} selected release${selectedRowSet.size === 1 ? "" : "s"}.`, "muted");
-  renderReleaseGraph();
-  renderReleaseTable();
 }
 
 function getReleaseGraphRenderableIds() {
   const rowById = getReleaseRowByIdMap();
   const selectedStatuses = new Set(uniqueValues(state.release.graph.statusFilter || []));
-  const ids = [];
-  for (const [id, entry] of Object.entries(state.release.relationshipData || {})) {
-    const row = rowById.get(id);
+  const ids = new Set();
+
+  function canRenderId(releaseId) {
+    const row = rowById.get(releaseId);
     if (!row) {
+      return false;
+    }
+    const status = String(row.status || "").trim();
+    return selectedStatuses.has(status) || (status === "Overdue" && selectedStatuses.has("Planned"));
+  }
+
+  for (const [id, entry] of Object.entries(state.release.relationshipData || {})) {
+    if (!canRenderId(id)) {
       continue;
     }
     const hasRelation = (entry.depends_on || []).length > 0 || (entry.co_releases || []).length > 0;
     if (!hasRelation) {
       continue;
     }
-    if (!selectedStatuses.has(String(row.status || ""))) {
-      continue;
+
+    ids.add(id);
+    for (const dependsId of entry.depends_on || []) {
+      if (canRenderId(dependsId)) {
+        ids.add(dependsId);
+      }
     }
-    ids.push(id);
+    for (const peerId of entry.co_releases || []) {
+      if (canRenderId(peerId)) {
+        ids.add(peerId);
+      }
+    }
   }
-  return ids;
+  return Array.from(ids);
 }
 
 function buildReleaseCoReleaseGroups(ids) {
@@ -1912,30 +2578,27 @@ function renderReleaseTable() {
 
   const selectedSet = getReleaseSelectedRowIdsSet();
   const htmlRows = rows.map((row) => `<tr>
-      ${state.release.editMode ? `<td class="release-select-col">
+      <td class="release-select-col">
         <input class="release-row-checkbox" type="checkbox" data-release-id="${escapeHtml(row.id)}" ${selectedSet.has(String(row.id)) ? "checked" : ""} aria-label="Select ${escapeHtml(row.name)}" />
-      </td>` : ""}
+      </td>
       <td>${escapeHtml(row.name)}</td>
       <td>${escapeHtml(formatReleaseDate(row.releaseDate))}</td>
       <td><span class="${getReleaseStatusClass(row.status)}">${escapeHtml(row.status || "-")}</span></td>
     </tr>`);
 
   el.releaseTableBody.innerHTML = htmlRows.join("");
-  if (state.release.editMode) {
-    for (const checkbox of el.releaseTableBody.querySelectorAll(".release-row-checkbox")) {
-      checkbox.addEventListener("change", () => {
-        const releaseId = String(checkbox.getAttribute("data-release-id") || "").trim();
-        if (!releaseId) {
-          return;
-        }
-        toggleReleaseRowSelection(releaseId, checkbox.checked);
-        updateReleaseSelectAllCheckbox(rows);
-      });
-    }
-    updateReleaseSelectAllCheckbox(rows);
-  } else {
-    updateReleaseSelectAllCheckbox([]);
+  for (const checkbox of el.releaseTableBody.querySelectorAll(".release-row-checkbox")) {
+    checkbox.addEventListener("change", () => {
+      const releaseId = String(checkbox.getAttribute("data-release-id") || "").trim();
+      if (!releaseId) {
+        return;
+      }
+      toggleReleaseRowSelection(releaseId, checkbox.checked);
+      updateReleaseSelectAllCheckbox(rows);
+      syncReleasePanelVisibility(allRows.length > 0);
+    });
   }
+  updateReleaseSelectAllCheckbox(rows);
   const isFiltered = rows.length !== allRows.length;
   const message = isFiltered
     ? `Showing ${rows.length} of ${allRows.length} releases.`
@@ -1949,13 +2612,24 @@ function renderReleaseTable() {
 
 function resetReleaseSelectionAndForms() {
   state.release.selectedRowIds = [];
-  state.release.editMode = false;
+  state.release.editMode = true;
   state.release.graph.visible = false;
   state.release.relationshipForm = {
     dependsSearch: "",
     coReleasesSearch: "",
     dependsOnSelected: [],
     coReleasesSelected: [],
+  };
+  state.release.modal = {
+    isOpen: false,
+    activeTab: "depends_on",
+    applying: false,
+    addOpen: false,
+    addSearch: "",
+    addSelectedIds: [],
+    persistedSnapshot: {},
+    stagedRelationships: {},
+    lastFocusedElement: null,
   };
 }
 
@@ -1965,6 +2639,7 @@ async function loadReleaseData() {
   resetReleaseSelectionAndForms();
   resetReleaseFilters();
   state.release.sort = { columnKey: "", direction: "none" };
+  syncReleasePanelVisibility(false);
   setReleasePanelState("Loading release data...", { tone: "muted", showTable: false });
 
   try {
@@ -1974,15 +2649,14 @@ async function loadReleaseData() {
     }
 
     state.release.rows = normalizeReleaseRows(payload);
-    const validIdsSet = getValidReleaseIdsSet();
-    state.release.relationshipData = loadReleaseRelationshipsFromLocalJson(validIdsSet);
+    state.release.relationshipData = await loadReleaseRelationshipsFromApi();
     scrubReleaseRelationshipsAgainstRows();
     renderReleaseStatusFilterOptions();
     syncReleaseFilterInputs();
     refreshReleaseRelationshipControls();
     syncReleaseGraphStatusFilterInput();
     state.release.loadedOnce = true;
-    setReleaseRelationshipFeedback("Use Edit mode to manage Depends On and Released Together relationships.", "muted");
+    setReleaseRelationshipFeedback("Select release rows and click Edit to manage dependency relationships.", "muted");
     renderReleaseTable();
     renderReleaseGraph();
   } catch (error) {
@@ -2109,6 +2783,9 @@ async function loadDashboardData() {
   renderTickets();
   renderTeamsWorkspace();
   renderTeamDetailPanels();
+  if (state.selectedTeamId) {
+    void loadSelectedTeamDetail(state.selectedTeamId);
+  }
 }
 
 function setActiveTab(tabName) {
@@ -2220,6 +2897,7 @@ function bindActions() {
       }
       setReleaseSelectedRowsFromSet(selectedSet);
       renderReleaseTable();
+      syncReleasePanelVisibility((state.release.rows || []).length > 0);
     });
   }
 
@@ -2239,18 +2917,158 @@ function bindActions() {
 
   if (el.releaseEditToggleBtn) {
     el.releaseEditToggleBtn.addEventListener("click", () => {
-      state.release.editMode = !state.release.editMode;
-      if (!state.release.editMode) {
-        state.release.selectedRowIds = [];
-      }
-      renderReleaseTable();
-      refreshReleaseRelationshipControls();
+      openReleaseEditModal();
     });
   }
 
-  if (el.releaseApplyRelationshipsBtn) {
-    el.releaseApplyRelationshipsBtn.addEventListener("click", () => {
-      applyReleaseRelationshipsToSelectedRows();
+  if (el.releaseEditModal) {
+    el.releaseEditModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (target.getAttribute("data-modal-close") === "true") {
+        closeReleaseEditModal();
+      }
+    });
+  }
+
+  if (el.releaseEditModalCloseBtn) {
+    el.releaseEditModalCloseBtn.addEventListener("click", () => {
+      closeReleaseEditModal();
+    });
+  }
+
+  if (el.releaseModalDependsTabBtn) {
+    el.releaseModalDependsTabBtn.addEventListener("click", () => {
+      state.release.modal.activeTab = "depends_on";
+      renderReleaseEditModal();
+    });
+  }
+
+  if (el.releaseModalDependedByTabBtn) {
+    el.releaseModalDependedByTabBtn.addEventListener("click", () => {
+      state.release.modal.activeTab = "depended_by";
+      renderReleaseEditModal();
+    });
+  }
+
+  if (el.releaseModalAddBtn) {
+    el.releaseModalAddBtn.addEventListener("click", () => {
+      state.release.modal.addOpen = true;
+      state.release.modal.addSearch = "";
+      state.release.modal.addSelectedIds = [];
+      renderReleaseEditModal();
+    });
+  }
+
+  if (el.releaseModalAddSearchInput) {
+    el.releaseModalAddSearchInput.addEventListener("input", () => {
+      state.release.modal.addSearch = String(el.releaseModalAddSearchInput.value || "");
+      renderReleaseModalAddSuggestions();
+    });
+  }
+
+  if (el.releaseModalAddCancelBtn) {
+    el.releaseModalAddCancelBtn.addEventListener("click", () => {
+      state.release.modal.addOpen = false;
+      state.release.modal.addSearch = "";
+      state.release.modal.addSelectedIds = [];
+      renderReleaseEditModal();
+    });
+  }
+
+  if (el.releaseModalAddSubmitBtn) {
+    el.releaseModalAddSubmitBtn.addEventListener("click", () => {
+      applyReleaseModalAddSubmit();
+    });
+  }
+
+  if (el.releaseModalResetBtn) {
+    el.releaseModalResetBtn.addEventListener("click", () => {
+      resetReleaseModalStagedChanges();
+    });
+  }
+
+  if (el.releaseModalApplyBtn) {
+    el.releaseModalApplyBtn.addEventListener("click", () => {
+      void applyReleaseModalChanges();
+    });
+  }
+
+  if (el.releaseModalTableBody) {
+    el.releaseModalTableBody.addEventListener("pointerover", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const tooltipText = String(target.getAttribute("data-tooltip") || "").trim();
+      showReleaseInfoTooltip(target, tooltipText, event.clientX, event.clientY);
+    });
+
+    el.releaseModalTableBody.addEventListener("pointermove", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      positionReleaseInfoTooltip(target, event.clientX, event.clientY);
+    });
+
+    el.releaseModalTableBody.addEventListener("pointerout", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const relatedTarget = event.relatedTarget;
+      if (relatedTarget instanceof Node && target.contains(relatedTarget)) {
+        return;
+      }
+      hideReleaseInfoTooltip();
+    });
+
+    el.releaseModalTableBody.addEventListener("focusin", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const tooltipText = String(target.getAttribute("data-tooltip") || "").trim();
+      showReleaseInfoTooltip(target, tooltipText);
+    });
+
+    el.releaseModalTableBody.addEventListener("focusout", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      hideReleaseInfoTooltip();
+    });
+  }
+
+  if (el.releaseEditModal) {
+    el.releaseEditModal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeReleaseEditModal();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = Array.from(
+        el.releaseEditModal.querySelectorAll("button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")
+      ).filter((node) => node instanceof HTMLElement && !node.hasAttribute("hidden"));
+      if (!focusable.length) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     });
   }
 
@@ -2330,7 +3148,12 @@ function bindActions() {
       state.ui.sidebarCollapsed = false;
       syncSidebarDisclosure();
     }
+    hideReleaseInfoTooltip();
   });
+
+  window.addEventListener("scroll", () => {
+    hideReleaseInfoTooltip();
+  }, true);
 
   // InfoComm Show Selector buttons
   const showBtns = document.querySelectorAll(".infocomm-btn");

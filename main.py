@@ -16,7 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from config_utils import get_sync_interval_minutes, get_sync_cooldown_seconds
 from database import (
     calculate_metrics,
+    get_release_relationship_maps,
     init_db,
+    init_release_relationship_schema,
     load_filter_options,
     load_grouped_tickets_by_team,
     load_team_detail_panels,
@@ -24,10 +26,13 @@ from database import (
     load_teams_workspace_data,
     load_ticket_rows,
     persist_extraction_result,
+    reconcile_release_relationships,
     read_sync_overview,
+    save_release_relationship_updates,
 )
-from services import _get_runtime_inputs, fetch_release_details, get_ticket_details_from_kanban_links
+from services import _get_runtime_inputs, fetch_release_details, get_team_release_trend, get_ticket_details_from_kanban_links
 import json
+from pydantic import BaseModel, Field
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
@@ -41,6 +46,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _scheduler
 
     init_db()
+    init_release_relationship_schema()
 
     if BackgroundScheduler is not None:
         interval_minutes = get_sync_interval_minutes()
@@ -104,6 +110,14 @@ _frontend_dir = Path(__file__).parent / "frontend"
 _assets_dir = Path(__file__).parent / "assets"
 
 
+class ReleaseRelationshipApplyRequest(BaseModel):
+    selected_release_ids: list[str] = Field(default_factory=list)
+    depends_on_ids: list[str] = Field(default_factory=list)
+    depended_by_ids: list[str] = Field(default_factory=list)
+    co_release_ids: list[str] = Field(default_factory=list)
+    active_release_ids: list[str] = Field(default_factory=list)
+
+
 if _frontend_dir.exists():
     app.mount("/app", StaticFiles(directory=str(_frontend_dir)), name="frontend-assets")
 
@@ -124,6 +138,28 @@ def _unwrap_query(val: Any, default: Any = None) -> Any:
     if type(val).__name__ == "Query":
         return default
     return val
+
+
+def _is_archived_release(release: dict[str, Any]) -> bool:
+    if bool(release.get("archived", False)):
+        return True
+    return str(release.get("status") or "").strip().lower() == "archived"
+
+
+def _exclude_archived_releases(payload: dict[str, Any]) -> dict[str, Any]:
+    releases = payload.get("releases")
+    if not isinstance(releases, list):
+        return payload
+
+    filtered_releases = [
+        release
+        for release in releases
+        if isinstance(release, dict) and not _is_archived_release(release)
+    ]
+    return {
+        **payload,
+        "releases": filtered_releases,
+    }
 
 
 def _parse_multi_query_values(raw_values: list[str] | None, allow_csv: bool = False) -> list[str]:
@@ -572,7 +608,7 @@ def get_teams_workspace(
     )
 
 
-@app.get("/api/teams/{team_id:path}")
+@app.get("/api/teams/{team_id}")
 def get_team_details(
     team_id: str,
     status: list[str] | None = Query(default=None),
@@ -593,6 +629,11 @@ def get_team_details(
         search=search,
         board_id=board_id,
     )
+
+
+@app.get("/api/teams/{team_id}/release-trend")
+def get_team_release_trend_details(team_id: str) -> dict[str, Any]:
+    return get_team_release_trend(team_id)
 
 
 @app.get("/api/infocomm/schedule/{show}")
@@ -656,4 +697,76 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
 @app.get("/api/releases")
 def get_releases(project_key: str | None = Query(default=None)) -> dict[str, Any]:
     project_key = _unwrap_query(project_key, None)
-    return fetch_release_details(project_key=project_key)
+    release_payload = fetch_release_details(project_key=project_key)
+    return _exclude_archived_releases(release_payload)
+
+
+@app.get("/api/releases/relationships")
+def get_release_relationships(project_key: str | None = Query(default=None)) -> dict[str, Any]:
+    project_key = _unwrap_query(project_key, None)
+    release_payload = _exclude_archived_releases(fetch_release_details(project_key=project_key))
+    if release_payload.get("error"):
+        return {
+            "relationships": {
+                "dependencies": {},
+                "co_releases": {},
+            },
+            "active_release_ids": [],
+            "error": release_payload.get("error"),
+        }
+
+    releases = release_payload.get("releases", []) if isinstance(release_payload.get("releases"), list) else []
+    active_release_ids = [
+        str((release or {}).get("id") or (release or {}).get("releaseId") or "").strip()
+        for release in releases
+        if isinstance(release, dict)
+    ]
+    active_release_ids = [item for item in active_release_ids if item]
+
+    scrub_metrics = reconcile_release_relationships(active_release_ids)
+    relationship_maps = get_release_relationship_maps(active_release_ids)
+
+    return {
+        "relationships": relationship_maps,
+        "active_release_ids": active_release_ids,
+        "scrub": scrub_metrics,
+    }
+
+
+@app.post("/api/releases/relationships")
+def apply_release_relationships(
+    body: ReleaseRelationshipApplyRequest,
+    project_key: str | None = Query(default=None),
+) -> dict[str, Any]:
+    project_key = _unwrap_query(project_key, None)
+    release_payload = _exclude_archived_releases(fetch_release_details(project_key=project_key))
+    if release_payload.get("error"):
+        raise HTTPException(status_code=502, detail=f"Release source unavailable: {release_payload.get('error')}")
+
+    releases = release_payload.get("releases", []) if isinstance(release_payload.get("releases"), list) else []
+    live_active_ids = [
+        str((release or {}).get("id") or (release or {}).get("releaseId") or "").strip()
+        for release in releases
+        if isinstance(release, dict)
+    ]
+    live_active_ids = [item for item in live_active_ids if item]
+
+    provided_active_ids = [str(item or "").strip() for item in (body.active_release_ids or []) if str(item or "").strip()]
+    active_release_ids = sorted(set(live_active_ids) | set(provided_active_ids), key=str.casefold)
+
+    write_metrics = save_release_relationship_updates(
+        selected_release_ids=body.selected_release_ids,
+        depends_on_ids=body.depends_on_ids,
+        depended_by_ids=body.depended_by_ids,
+        co_release_ids=body.co_release_ids,
+        active_release_ids=active_release_ids,
+    )
+    scrub_metrics = reconcile_release_relationships(active_release_ids)
+    relationship_maps = get_release_relationship_maps(active_release_ids)
+
+    return {
+        "updated": write_metrics,
+        "scrub": scrub_metrics,
+        "relationships": relationship_maps,
+        "active_release_ids": active_release_ids,
+    }

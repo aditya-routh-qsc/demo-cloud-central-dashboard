@@ -948,6 +948,172 @@ body:not([data-theme="dark"]) .moon-icon {
   background: var(--panel);
 }
 
+.release-edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.release-edit-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 8, 23, 0.46);
+}
+
+.release-edit-modal-card {
+  position: relative;
+  width: min(980px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.release-edit-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.release-edit-modal-header h3 {
+  margin: 0;
+}
+
+.release-edit-modal-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.release-modal-tab {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.release-modal-tab.is-active {
+  background: color-mix(in srgb, var(--brand-blue) 14%, var(--panel));
+  border-color: color-mix(in srgb, var(--brand-blue) 45%, var(--line));
+  color: color-mix(in srgb, var(--brand-blue) 80%, var(--text));
+}
+
+.release-edit-modal-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: auto;
+  background: var(--panel);
+}
+
+.release-modal-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.release-modal-table th,
+.release-modal-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.release-modal-info-col {
+  width: 70px;
+}
+
+.release-modal-info-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+  color: var(--text-muted);
+  cursor: help;
+  font-weight: 700;
+}
+
+.release-info-tooltip-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 5000;
+  min-width: 220px;
+  max-width: min(420px, 86vw);
+  max-height: min(280px, 42vh);
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--brand-blue) 35%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, black 10%);
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+}
+
+.release-modal-remove-btn {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+  color: var(--danger-text);
+  border-radius: 9px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.release-modal-inline-state {
+  min-height: 18px;
+  font-size: 0.82rem;
+}
+
+.release-modal-add-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.release-modal-add-section {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--bg-soft);
+}
+
+.release-modal-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.release-modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.release-modal-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.release-modal-info-map {
+  font-size: 0.78rem;
+}
+
+.release-modal-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 @media (max-width: 760px) {
   .release-relationship-controls {
     grid-template-columns: 1fr;
@@ -963,6 +1129,20 @@ body:not([data-theme="dark"]) .moon-icon {
 
   .release-table-filters .subtle-btn {
     width: fit-content;
+  }
+
+  .release-edit-modal {
+    padding: 8px;
+  }
+
+  .release-edit-modal-card {
+    width: min(100%, 100vw);
+    max-height: 94vh;
+  }
+
+  .release-modal-footer {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
@@ -1137,6 +1317,19 @@ body:not([data-theme="dark"]) .moon-icon {
   margin-top: 8px;
 }
 
+.team-detail-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.team-detail-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg-soft);
+  box-shadow: var(--shadow-sm);
+}
+
 .team-member-table td,
 .team-member-table th {
   vertical-align: top;
@@ -1223,6 +1416,58 @@ body:not([data-theme="dark"]) .moon-icon {
 
 .team-detail-skeleton.is-visible {
   display: block;
+}
+
+.overview-links-panel {
+  margin-top: 12px;
+}
+
+.overview-links-panel h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.overview-links-group + .overview-links-group {
+  margin-top: 14px;
+}
+
+.overview-links-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg-soft) 86%, var(--panel));
+}
+
+.overview-links-group h4 {
+  margin-bottom: 10px;
+}
+
+.overview-links-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.overview-links-table th,
+.overview-links-table td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+.overview-links-table th {
+  background: color-mix(in srgb, var(--bg-soft) 92%, var(--panel));
+  text-align: left;
+  font-weight: 600;
+}
+
+.overview-links-table a {
+  text-decoration: none;
+  color: var(--brand-blue);
+  word-break: break-word;
+}
+
+.overview-links-table a:hover {
+  text-decoration: underline;
 }
 
 @keyframes shimmer {
