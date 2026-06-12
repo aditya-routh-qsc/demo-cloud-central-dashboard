@@ -20,6 +20,7 @@ from database import (
     init_db,
     init_release_relationship_schema,
     load_filter_options,
+    load_release_remarks_map,
     load_grouped_tickets_by_team,
     load_team_detail_panels,
     load_team_filter_options,
@@ -29,6 +30,7 @@ from database import (
     reconcile_release_relationships,
     read_sync_overview,
     save_release_relationship_updates,
+    save_release_remark,
 )
 from services import _get_runtime_inputs, fetch_release_details, get_team_release_trend, get_ticket_details_from_kanban_links
 import json
@@ -118,6 +120,11 @@ class ReleaseRelationshipApplyRequest(BaseModel):
     active_release_ids: list[str] = Field(default_factory=list)
 
 
+class ReleaseRemarkUpdateRequest(BaseModel):
+    release_id: str
+    remarks: str = ""
+
+
 if _frontend_dir.exists():
     app.mount("/app", StaticFiles(directory=str(_frontend_dir)), name="frontend-assets")
 
@@ -159,6 +166,39 @@ def _exclude_archived_releases(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         **payload,
         "releases": filtered_releases,
+    }
+
+
+def _hydrate_release_remarks(payload: dict[str, Any]) -> dict[str, Any]:
+    releases = payload.get("releases")
+    if not isinstance(releases, list):
+        return payload
+
+    release_ids = [
+        str((release or {}).get("id") or (release or {}).get("releaseId") or "").strip()
+        for release in releases
+        if isinstance(release, dict)
+    ]
+    release_ids = [item for item in release_ids if item]
+    if not release_ids:
+        return payload
+
+    remarks_map = load_release_remarks_map(release_ids)
+    hydrated_releases: list[dict[str, Any]] = []
+    for release in releases:
+        if not isinstance(release, dict):
+            continue
+        release_id = str(release.get("id") or release.get("releaseId") or "").strip()
+        hydrated_releases.append(
+            {
+                **release,
+                "remarks": remarks_map.get(release_id, str(release.get("remarks") or "")),
+            }
+        )
+
+    return {
+        **payload,
+        "releases": hydrated_releases,
     }
 
 
@@ -698,13 +738,13 @@ def get_infocomm_schedule(show: str, refresh: bool = False) -> list[dict]:
 def get_releases(project_key: str | None = Query(default=None)) -> dict[str, Any]:
     project_key = _unwrap_query(project_key, None)
     release_payload = fetch_release_details(project_key=project_key)
-    return _exclude_archived_releases(release_payload)
+    return _hydrate_release_remarks(_exclude_archived_releases(release_payload))
 
 
 @app.get("/api/releases/relationships")
 def get_release_relationships(project_key: str | None = Query(default=None)) -> dict[str, Any]:
     project_key = _unwrap_query(project_key, None)
-    release_payload = _exclude_archived_releases(fetch_release_details(project_key=project_key))
+    release_payload = _hydrate_release_remarks(_exclude_archived_releases(fetch_release_details(project_key=project_key)))
     if release_payload.get("error"):
         return {
             "relationships": {
@@ -739,7 +779,7 @@ def apply_release_relationships(
     project_key: str | None = Query(default=None),
 ) -> dict[str, Any]:
     project_key = _unwrap_query(project_key, None)
-    release_payload = _exclude_archived_releases(fetch_release_details(project_key=project_key))
+    release_payload = _hydrate_release_remarks(_exclude_archived_releases(fetch_release_details(project_key=project_key)))
     if release_payload.get("error"):
         raise HTTPException(status_code=502, detail=f"Release source unavailable: {release_payload.get('error')}")
 
@@ -769,4 +809,18 @@ def apply_release_relationships(
         "scrub": scrub_metrics,
         "relationships": relationship_maps,
         "active_release_ids": active_release_ids,
+    }
+
+
+@app.post("/api/releases/remarks")
+def update_release_remarks(body: ReleaseRemarkUpdateRequest) -> dict[str, Any]:
+    release_id = str(body.release_id or "").strip()
+    if not release_id:
+        raise HTTPException(status_code=400, detail="release_id is required")
+
+    save_release_remark(release_id=release_id, remarks=str(body.remarks or ""))
+
+    return {
+        "release_id": release_id,
+        "remarks": str(body.remarks or ""),
     }

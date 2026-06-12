@@ -10,12 +10,12 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/app/style.css?v=20260611-1" />
+  <link rel="stylesheet" href="/app/style.css?v=20260612-5" />
   <link rel="icon" type="image/png" href="/assets/images/qsys-logo.png">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
   <script src="https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js" defer></script>
   <script src="https://unpkg.com/lucide@0.400.0" defer></script>
-  <script src="/app/app.js?v=20260611-1" defer></script>
+  <script src="/app/app.js?v=20260612-5" defer></script>
 </head>
 
 <body>
@@ -36,10 +36,10 @@
           <i data-lucide="home" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Overview</span>
         </button>
-        <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
+        <!-- <button class="tab" data-tab="tickets" type="button" title="Tickets" aria-label="Tickets">
           <i data-lucide="ticket" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Tickets</span>
-        </button>
+        </button> -->
         <button class="tab" data-tab="teams" type="button" title="Teams" aria-label="Teams">
           <i data-lucide="users" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Team Details</span>
@@ -51,6 +51,10 @@
         <button class="tab" data-tab="release" type="button" title="Release" aria-label="Release">
           <i data-lucide="rocket" class="tab-icon" aria-hidden="true"></i>
           <span class="tab-label">Release</span>
+        </button>
+        <button class="tab" data-tab="wiki" type="button" title="Wiki" aria-label="Wiki">
+          <i data-lucide="book" class="tab-icon" aria-hidden="true"></i>
+          <span class="tab-label">Wiki</span>
         </button>
       </nav>
     </aside>
@@ -171,62 +175,10 @@
             <p>This interface intentionally uses read-only summary mode on mobile screens.</p>
           </article>
 
+        </section>
+
+        <section id="wiki" class="view">
           <article id="overviewUsefulLinksPanel" class="panel overview-links-panel">
-            <h3>Useful Links</h3>
-            <p class="muted">Some links require login and show access pages for restricted users. This dashboard only surfaces links.</p>
-
-            <section class="overview-links-group" aria-label="Reflect environment links">
-              <h4>Reflect Environments</h4>
-              <div class="table-wrap">
-                <table class="overview-links-table">
-                  <thead>
-                    <tr>
-                      <th>Environment</th>
-                      <th>Link</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Dev</td>
-                      <td><a href="https://dev.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://dev.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>Test</td>
-                      <td><a href="https://tst.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://tst.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>QA</td>
-                      <td><a href="https://qa.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://qa.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>US QA (QB)</td>
-                      <td><a href="https://qb.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://qb.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>EMEA QA (LVT)</td>
-                      <td><a href="https://lvt.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://lvt.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>Staging</td>
-                      <td><a href="https://staging.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://staging.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>Prod US</td>
-                      <td><a href="https://reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>Prod Europe</td>
-                      <td><a href="https://emea.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://emea.reflect.qsc.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>Prod APAC</td>
-                      <td><a href="https://apac.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://apac.reflect.qsc.com</a></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
             <section class="overview-links-group" aria-label="Automation reports links">
               <h4>Automation Reports</h4>
               <div class="table-wrap">
@@ -234,13 +186,11 @@
                   <thead>
                     <tr>
                       <th>Report</th>
-                      <th>Link</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td>Allure Azure Pipelines Report</td>
-                      <td><a href="https://dev.azure.com/qsys-dev/AutomatedTesting/_build/results?buildId=24879&view=qameta.allure-azure-pipelines.build-allure-tab" target="_blank" rel="noopener noreferrer">Open report</a></td>
+                      <td><a href="https://dev.azure.com/qsys-dev/AutomatedTesting/_build/results?buildId=24879&view=qameta.allure-azure-pipelines.build-allure-tab" target="_blank" rel="noopener noreferrer">Allure Azure Pipelines Report</a></td>
                     </tr>
                   </tbody>
                 </table>
@@ -254,7 +204,7 @@
                   <thead>
                     <tr>
                       <th>Environment</th>
-                      <th>Link</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -263,28 +213,80 @@
                       <td><a href="https://grqrempromowus21dev-fxfzgdadecadaqbu.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21dev-fxfzgdadecadaqbu.wus2.grafana.azure.com</a></td>
                     </tr>
                     <tr>
-                      <td>TST</td>
-                      <td><a href="https://grqrempromowus21tst-a0fubje7f4edbrd9.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21tst-a0fubje7f4edbrd9.wus2.grafana.azure.com</a></td>
-                    </tr>
-                    <tr>
-                      <td>QA</td>
-                      <td><a href="https://grqrempromowus21qa-akguhvb2cmcbhrce.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21qa-akguhvb2cmcbhrce.wus2.grafana.azure.com</a></td>
-                    </tr>
-                    <tr>
                       <td>LVT</td>
                       <td><a href="https://grqrempromowus21lvt-gmhpdrauhmcfakdy.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21lvt-gmhpdrauhmcfakdy.wus2.grafana.azure.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Prod</td>
+                      <td><a href="https://grqremqscwus21prod-ewbgazfae4ebcbdv.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqremqscwus21prod-ewbgazfae4ebcbdv.wus2.grafana.azure.com</a></td>
                     </tr>
                     <tr>
                       <td>PVT</td>
                       <td><a href="https://grqrempromowus21pvt-e4hsd3ekb6evbvgj.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21pvt-e4hsd3ekb6evbvgj.wus2.grafana.azure.com</a></td>
                     </tr>
                     <tr>
+                      <td>QA</td>
+                      <td><a href="https://grqrempromowus21qa-akguhvb2cmcbhrce.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21qa-akguhvb2cmcbhrce.wus2.grafana.azure.com</a></td>
+                    </tr>
+                    <tr>
                       <td>Staging</td>
                       <td><a href="https://grqrempromowus21sta-c0f7cdcuaueccjdh.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21sta-c0f7cdcuaueccjdh.wus2.grafana.azure.com</a></td>
                     </tr>
                     <tr>
-                      <td>Prod</td>
-                      <td><a href="https://grqremqscwus21prod-ewbgazfae4ebcbdv.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqremqscwus21prod-ewbgazfae4ebcbdv.wus2.grafana.azure.com</a></td>
+                      <td>TST</td>
+                      <td><a href="https://grqrempromowus21tst-a0fubje7f4edbrd9.wus2.grafana.azure.com" target="_blank" rel="noopener noreferrer">https://grqrempromowus21tst-a0fubje7f4edbrd9.wus2.grafana.azure.com</a></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="overview-links-group" aria-label="Reflect environment links">
+              <h4>Reflect Environments</h4>
+              <div class="table-wrap">
+                <table class="overview-links-table">
+                  <thead>
+                    <tr>
+                      <th>Environment</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Dev</td>
+                      <td><a href="https://dev.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://dev.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>EMEA QA (LVT)</td>
+                      <td><a href="https://lvt.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://lvt.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Prod APAC</td>
+                      <td><a href="https://apac.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://apac.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Prod Europe</td>
+                      <td><a href="https://emea.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://emea.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Prod US</td>
+                      <td><a href="https://reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>QA</td>
+                      <td><a href="https://qa.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://qa.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Staging</td>
+                      <td><a href="https://staging.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://staging.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>Test</td>
+                      <td><a href="https://tst.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://tst.reflect.qsc.com</a></td>
+                    </tr>
+                    <tr>
+                      <td>US QA (QB)</td>
+                      <td><a href="https://qb.reflect.qsc.com" target="_blank" rel="noopener noreferrer">https://qb.reflect.qsc.com</a></td>
                     </tr>
                   </tbody>
                 </table>
@@ -348,8 +350,12 @@
             <div id="releaseRelationshipFeedback" class="release-relationship-feedback muted"></div>
 
             <div id="releasePrimaryActions" class="release-relationship-actions release-primary-actions">
-              <button id="releaseEditToggleBtn" type="button" class="apply-filters-btn" hidden>Edit</button>
-              <button id="releaseGraphToggleBtn" type="button" class="reset-filters-btn">Show Graph</button>
+              <a id="releaseJiraDashboardLink" class="action-btn-link" href="https://qsc.atlassian.net/projects/QSYSCLOUD?selectedItem=com.atlassian.jira.jira-projects-plugin%3Arelease-page" target="_blank" rel="noopener noreferrer">Open Jira Releases Dashboard</a>
+              <div class="release-actions-stack">
+                <button id="releaseEditDependenciesBtn" type="button" class="reset-filters-btn" hidden>Edit Dependencies</button>
+                <button id="releaseEditToggleBtn" type="button" class="apply-filters-btn release-edit-toggle-btn">Edit</button>
+                <button id="releaseGraphToggleBtn" type="button" class="reset-filters-btn">Show Graph</button>
+              </div>
             </div>
 
             <div id="releaseTableFiltersWrap" class="release-table-filters" role="group" aria-label="Release table filters">
@@ -361,6 +367,7 @@
                 <span>Status</span>
                 <select id="releaseStatusFilterSelect">
                   <option value="">All statuses</option>
+                  <option value="Planned">Planned</option>
                 </select>
               </label>
               <button id="releaseClearFiltersBtn" type="button" class="subtle-btn">Clear</button>
@@ -390,6 +397,7 @@
                         <span class="release-sort-indicator" aria-hidden="true">↕</span>
                       </button>
                     </th>
+                    <th class="release-remarks-col">Remarks</th>
                   </tr>
                 </thead>
                 <tbody id="releaseTableBody"></tbody>
@@ -397,26 +405,56 @@
             </div>
 
             <div id="releaseGraphPanel" class="release-graph-panel panel" hidden>
-              <div class="release-graph-toolbar">
+              <!-- <div class="release-graph-toolbar">
                 <label class="release-filter-field" for="releaseGraphStatusFilter">
                   <span>Graph Status Filter</span>
-                  <select id="releaseGraphStatusFilter" multiple size="2" aria-label="Release graph status filter">
-                    <option value="Released" selected>Released</option>
+                  <select id="releaseGraphStatusFilter" multiple size="1" aria-label="Release graph status filter">
                     <option value="Planned" selected>Planned</option>
                   </select>
                 </label>
-              </div>
+              </div> -->
               <div id="releaseGraphCanvas" class="release-graph-canvas" aria-label="Release dependency graph"></div>
             </div>
           </article>
         </section>
+
+        <div id="releaseRemarksModal" class="release-edit-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="releaseRemarksModalTitle">
+          <div class="release-edit-modal-backdrop" data-release-remarks-close="true"></div>
+          <div class="release-edit-modal-card panel release-remarks-modal-card" role="document">
+            <div class="release-edit-modal-header">
+              <h3 id="releaseRemarksModalTitle"></h3>
+              <button id="releaseRemarksModalCloseBtn" type="button" class="release-modal-close-btn" aria-label="Close remarks" title="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+
+            <label id="releaseRemarksEditableContent" class="release-filter-field" for="releaseRemarksTextarea">
+              <span>Remarks</span>
+              <textarea id="releaseRemarksTextarea" rows="5" placeholder="Add release remarks"></textarea>
+            </label>
+
+            <div id="releaseRemarksReadOnlyContent" class="release-remarks-read-only" hidden>
+              <div id="releaseRemarksReadOnlyText" class="release-remarks-read-only-text"></div>
+            </div>
+
+            <div id="releaseRemarksFooter" class="release-modal-footer">
+              <div id="releaseRemarksApplyState" class="release-modal-inline-state muted"></div>
+              <div class="release-modal-footer-actions">
+                <button id="releaseRemarksResetBtn" type="button" class="release-modal-secondary-btn">Reset</button>
+                <button id="releaseRemarksApplyBtn" type="button" class="apply-filters-btn">Apply</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div id="releaseEditModal" class="release-edit-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="releaseEditModalTitle">
           <div class="release-edit-modal-backdrop" data-modal-close="true"></div>
           <div class="release-edit-modal-card panel" role="document">
             <div class="release-edit-modal-header">
               <h3 id="releaseEditModalTitle">Edit Dependencies</h3>
-              <button id="releaseEditModalCloseBtn" type="button" class="subtle-btn" aria-label="Close dependency editor">Close</button>
+              <button id="releaseEditModalCloseBtn" type="button" class="release-modal-close-btn" aria-label="Close dependency editor" title="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
             </div>
 
             <div class="release-edit-modal-tabs" role="tablist" aria-label="Dependency relationship views">
@@ -442,7 +480,7 @@
             <div id="releaseModalErrorState" class="release-modal-inline-state text-danger" hidden></div>
 
             <div class="release-modal-add-row">
-              <button id="releaseModalAddBtn" type="button" class="subtle-btn">Add</button>
+              <button id="releaseModalAddBtn" type="button" class="release-modal-secondary-btn">Add</button>
             </div>
 
             <section id="releaseModalAddSection" class="release-modal-add-section" hidden>
@@ -453,15 +491,28 @@
               <div id="releaseModalAddSuggestions" class="release-suggestions" aria-label="Add dependency suggestions"></div>
               <div class="release-modal-add-actions">
                 <button id="releaseModalAddSubmitBtn" type="button" class="apply-filters-btn">Submit</button>
-                <button id="releaseModalAddCancelBtn" type="button" class="subtle-btn">Cancel</button>
+                <button id="releaseModalAddCancelBtn" type="button" class="release-modal-secondary-btn">Cancel</button>
               </div>
             </section>
 
             <div class="release-modal-footer">
               <div id="releaseModalApplyState" class="release-modal-inline-state muted"></div>
               <div class="release-modal-footer-actions">
-                <button id="releaseModalResetBtn" type="button" class="subtle-btn" disabled>Reset</button>
+                <button id="releaseModalResetBtn" type="button" class="release-modal-secondary-btn" disabled>Reset</button>
                 <button id="releaseModalApplyBtn" type="button" class="apply-filters-btn" disabled>Apply Changes</button>
+              </div>
+            </div>
+
+            <div id="releaseInfoClickPopup" class="release-click-popup" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="releaseInfoClickPopupTitle">
+              <div class="release-click-popup-backdrop" data-release-info-popup-close="true"></div>
+              <div class="release-click-popup-card panel" role="document">
+                <div class="release-click-popup-header">
+                  <h4 id="releaseInfoClickPopupTitle">Dependency details</h4>
+                  <button id="releaseInfoClickPopupCloseBtn" type="button" class="release-modal-close-btn" aria-label="Close dependency details" title="Close">
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+                <div id="releaseInfoClickPopupContent" class="release-click-popup-content"></div>
               </div>
             </div>
           </div>

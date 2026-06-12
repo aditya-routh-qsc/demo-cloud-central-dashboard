@@ -40,7 +40,7 @@ const state = {
     loading: false,
     error: "",
     loadedOnce: false,
-    editMode: true,
+    editMode: false,
     selectedRowIds: [],
     relationshipData: {},
     modal: {
@@ -62,7 +62,7 @@ const state = {
     },
     filters: {
       nameQuery: "",
-      status: "",
+      status: "Planned",
     },
     sort: {
       columnKey: "",
@@ -70,13 +70,27 @@ const state = {
     },
     graph: {
       visible: false,
-      statusFilter: ["Released", "Planned"],
+      statusFilter: ["Planned"],
       instance: null,
+    },
+    remarksModal: {
+      isOpen: false,
+      releaseId: "",
+      releaseName: "",
+      draftText: "",
+      persistedText: "",
+      applying: false,
+      isReadOnly: false,
+      lastFocusedElement: null,
     },
   },
   ui: {
     advancedFiltersOpen: false,
     sidebarCollapsed: false,
+    teamDetailPanels: {
+      members: true,
+      trend: true,
+    },
   },
 };
 
@@ -129,8 +143,9 @@ const el = {
   releaseCoreleasesSelectedList: document.getElementById("releaseCoreleasesSelectedList"),
   releaseCoreleasesSearchInput: document.getElementById("releaseCoreleasesSearchInput"),
   releaseCoreleasesSuggestions: document.getElementById("releaseCoreleasesSuggestions"),
-  releaseEditToggleBtn: document.getElementById("releaseEditToggleBtn"),
+  releaseEditDependenciesBtn: document.getElementById("releaseEditDependenciesBtn"),
   releaseGraphToggleBtn: document.getElementById("releaseGraphToggleBtn"),
+  releaseEditToggleBtn: document.getElementById("releaseEditToggleBtn"),
   releaseTableFiltersWrap: document.getElementById("releaseTableFiltersWrap"),
   releaseNameFilterInput: document.getElementById("releaseNameFilterInput"),
   releaseStatusFilterSelect: document.getElementById("releaseStatusFilterSelect"),
@@ -157,6 +172,20 @@ const el = {
   releaseModalResetBtn: document.getElementById("releaseModalResetBtn"),
   releaseModalApplyBtn: document.getElementById("releaseModalApplyBtn"),
   releaseModalApplyState: document.getElementById("releaseModalApplyState"),
+  releaseInfoClickPopup: document.getElementById("releaseInfoClickPopup"),
+  releaseInfoClickPopupCloseBtn: document.getElementById("releaseInfoClickPopupCloseBtn"),
+  releaseInfoClickPopupContent: document.getElementById("releaseInfoClickPopupContent"),
+  releaseRemarksModal: document.getElementById("releaseRemarksModal"),
+  releaseRemarksModalCloseBtn: document.getElementById("releaseRemarksModalCloseBtn"),
+  releaseRemarksModalTitle: document.getElementById("releaseRemarksModalTitle"),
+  releaseRemarksEditableContent: document.getElementById("releaseRemarksEditableContent"),
+  releaseRemarksReadOnlyContent: document.getElementById("releaseRemarksReadOnlyContent"),
+  releaseRemarksReadOnlyText: document.getElementById("releaseRemarksReadOnlyText"),
+  releaseRemarksTextarea: document.getElementById("releaseRemarksTextarea"),
+  releaseRemarksApplyState: document.getElementById("releaseRemarksApplyState"),
+  releaseRemarksFooter: document.getElementById("releaseRemarksFooter"),
+  releaseRemarksResetBtn: document.getElementById("releaseRemarksResetBtn"),
+  releaseRemarksApplyBtn: document.getElementById("releaseRemarksApplyBtn"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   globalLoadingIndicator: document.getElementById("globalLoadingIndicator"),
 };
@@ -170,7 +199,13 @@ const loadingUiState = {
 
 const loadingRevealDelayMs = 120;
 const loadingMinVisibleMs = 220;
-const releaseInfoTooltipState = {
+
+const releaseInfoClickPopupState = {
+  isOpen: false,
+  anchor: null,
+};
+
+const releaseInfoHoverTooltipState = {
   element: null,
   anchor: null,
 };
@@ -300,7 +335,7 @@ function setAdvancedFiltersOpen(nextOpen, options = {}) {
 }
 
 function shouldHideFilterControlsForTab(tabName) {
-  return tabName === "teams" || tabName === "infocomm" || tabName === "release";
+  return tabName === "teams" || tabName === "infocomm" || tabName === "release" || tabName === "wiki";
 }
 
 function syncFilterControlsVisibility(tabName) {
@@ -340,9 +375,28 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-function getReleaseInfoTooltipElement() {
-  if (releaseInfoTooltipState.element) {
-    return releaseInfoTooltipState.element;
+function isNodeInsideReleaseInfoClickPopup(node) {
+  const popup = el.releaseInfoClickPopup;
+  if (!popup || popup.hidden) {
+    return false;
+  }
+  const card = popup.querySelector(".release-click-popup-card");
+  return Boolean(card && node instanceof Node && card.contains(node));
+}
+
+function isNodeInsideReleaseInfoClickPopupAnchor(node) {
+  const anchor = releaseInfoClickPopupState.anchor;
+  return Boolean(anchor && node instanceof Node && anchor.contains(node));
+}
+
+function isNodeInsideReleaseInfoHoverTooltip(node) {
+  const tooltip = releaseInfoHoverTooltipState.element;
+  return Boolean(tooltip && node instanceof Node && tooltip.contains(node));
+}
+
+function getReleaseInfoHoverTooltipElement() {
+  if (releaseInfoHoverTooltipState.element) {
+    return releaseInfoHoverTooltipState.element;
   }
   const tooltip = document.createElement("div");
   tooltip.className = "release-info-tooltip-layer";
@@ -350,22 +404,22 @@ function getReleaseInfoTooltipElement() {
   tooltip.setAttribute("role", "tooltip");
   tooltip.setAttribute("aria-hidden", "true");
   document.body.appendChild(tooltip);
-  releaseInfoTooltipState.element = tooltip;
+  releaseInfoHoverTooltipState.element = tooltip;
   return tooltip;
 }
 
-function hideReleaseInfoTooltip() {
-  const tooltip = releaseInfoTooltipState.element;
+function hideReleaseInfoHoverTooltip() {
+  const tooltip = releaseInfoHoverTooltipState.element;
   if (!tooltip) {
     return;
   }
   tooltip.hidden = true;
   tooltip.setAttribute("aria-hidden", "true");
-  releaseInfoTooltipState.anchor = null;
+  releaseInfoHoverTooltipState.anchor = null;
 }
 
-function positionReleaseInfoTooltip(anchorElement, pointerX, pointerY) {
-  const tooltip = getReleaseInfoTooltipElement();
+function positionReleaseInfoHoverTooltip(anchorElement, pointerX, pointerY) {
+  const tooltip = getReleaseInfoHoverTooltipElement();
   if (tooltip.hidden) {
     return;
   }
@@ -405,19 +459,56 @@ function positionReleaseInfoTooltip(anchorElement, pointerX, pointerY) {
   tooltip.style.top = `${Math.round(top)}px`;
 }
 
-function showReleaseInfoTooltip(anchorElement, tooltipText, pointerX, pointerY) {
+function showReleaseInfoHoverTooltip(anchorElement, tooltipText, pointerX, pointerY) {
   const text = String(tooltipText || "").trim();
   if (!text) {
-    hideReleaseInfoTooltip();
+    hideReleaseInfoHoverTooltip();
     return;
   }
 
-  const tooltip = getReleaseInfoTooltipElement();
+  const tooltip = getReleaseInfoHoverTooltipElement();
   tooltip.textContent = text;
+  tooltip.scrollTop = 0;
   tooltip.hidden = false;
   tooltip.setAttribute("aria-hidden", "false");
-  releaseInfoTooltipState.anchor = anchorElement || null;
-  positionReleaseInfoTooltip(anchorElement, pointerX, pointerY);
+  releaseInfoHoverTooltipState.anchor = anchorElement || null;
+  positionReleaseInfoHoverTooltip(anchorElement, pointerX, pointerY);
+}
+
+function openReleaseInfoClickPopup(anchorElement, detailsText) {
+  if (!el.releaseInfoClickPopup || !el.releaseInfoClickPopupContent) {
+    return;
+  }
+  const text = String(detailsText || "").trim();
+  if (!text) {
+    return;
+  }
+  releaseInfoClickPopupState.isOpen = true;
+  releaseInfoClickPopupState.anchor = anchorElement || null;
+  el.releaseInfoClickPopupContent.textContent = text;
+  el.releaseInfoClickPopup.hidden = false;
+  el.releaseInfoClickPopup.setAttribute("aria-hidden", "false");
+  if (el.releaseInfoClickPopupCloseBtn) {
+    el.releaseInfoClickPopupCloseBtn.focus({ preventScroll: true });
+  }
+}
+
+function hideReleaseInfoClickPopup() {
+  if (!el.releaseInfoClickPopup) {
+    return;
+  }
+  const shouldRestoreFocus = releaseInfoClickPopupState.isOpen;
+  const anchor = releaseInfoClickPopupState.anchor;
+  releaseInfoClickPopupState.isOpen = false;
+  releaseInfoClickPopupState.anchor = null;
+  el.releaseInfoClickPopup.hidden = true;
+  el.releaseInfoClickPopup.setAttribute("aria-hidden", "true");
+  if (el.releaseInfoClickPopupContent) {
+    el.releaseInfoClickPopupContent.textContent = "";
+  }
+  if (shouldRestoreFocus && anchor && typeof anchor.focus === "function") {
+    anchor.focus({ preventScroll: true });
+  }
 }
 
 function uniqueValues(values) {
@@ -870,6 +961,61 @@ function destroyChart(name) {
   }
 }
 
+function getThemeVar(name, fallback = "") {
+  const value = getComputedStyle(document.body).getPropertyValue(name);
+  const normalized = String(value || "").trim();
+  return normalized || fallback;
+}
+
+function getChartTheme() {
+  return {
+    statusBar: getThemeVar("--chart-status-bar", "rgba(0, 124, 255, 0.62)"),
+    priority: [
+      getThemeVar("--chart-priority-1", "#ef4444"),
+      getThemeVar("--chart-priority-2", "#f59e0b"),
+      getThemeVar("--chart-priority-3", "#3b82f6"),
+      getThemeVar("--chart-priority-4", "#10b981"),
+      getThemeVar("--chart-priority-5", "#8b5cf6"),
+      getThemeVar("--chart-priority-6", "#14b8a6"),
+    ],
+    empty: getThemeVar("--chart-empty", "rgba(156, 163, 175, 0.5)"),
+    grid: getThemeVar("--chart-grid", "rgba(148, 163, 184, 0.3)"),
+    text: getThemeVar("--chart-text", "#334155"),
+  };
+}
+
+function getReleaseGraphTheme() {
+  return {
+    nodeBg: getThemeVar("--graph-node-bg", "#e2e8f0"),
+    nodeBorder: getThemeVar("--graph-node-border", "#94a3b8"),
+    nodeText: getThemeVar("--graph-node-text", "#0f172a"),
+    releasedBg: getThemeVar("--graph-status-released-bg", "#ecfdf5"),
+    releasedBorder: getThemeVar("--graph-status-released-border", "#10b981"),
+    releasedText: getThemeVar("--graph-status-released-text", "#065f46"),
+    plannedBg: getThemeVar("--graph-status-planned-bg", "#e8f3ff"),
+    plannedBorder: getThemeVar("--graph-status-planned-border", "#60a5fa"),
+    plannedText: getThemeVar("--graph-status-planned-text", "#1e40af"),
+    archivedBg: getThemeVar("--graph-status-archived-bg", "#fff5e6"),
+    archivedBorder: getThemeVar("--graph-status-archived-border", "#d97706"),
+    archivedText: getThemeVar("--graph-status-archived-text", "#7c2d12"),
+    overdueBg: getThemeVar("--graph-status-overdue-bg", "#fef2f2"),
+    overdueBorder: getThemeVar("--graph-status-overdue-border", "#ef4444"),
+    overdueText: getThemeVar("--graph-status-overdue-text", "#991b1b"),
+    groupBg: getThemeVar("--graph-group-bg", "rgba(96, 165, 250, 0.08)"),
+    groupBorder: getThemeVar("--graph-group-border", "#60a5fa"),
+    edgeDepends: getThemeVar("--graph-edge-depends", "#64748b"),
+    edgeCoRelease: getThemeVar("--graph-edge-corelease", "#38bdf8"),
+  };
+}
+
+function rerenderThemeSensitiveVisuals() {
+  renderStatusChart();
+  renderPriorityChart();
+  if (state.release.graph.visible) {
+    renderReleaseGraph();
+  }
+}
+
 function makeChart(canvasId, config, stateKey) {
   destroyChart(stateKey);
   const chartCtor = window.Chart;
@@ -882,6 +1028,7 @@ function makeChart(canvasId, config, stateKey) {
 
 function renderStatusChart() {
   const rows = (state.metrics && state.metrics.active_by_status) || [];
+  const chartTheme = getChartTheme();
   makeChart("statusChart", {
     type: "bar",
     data: {
@@ -889,14 +1036,29 @@ function renderStatusChart() {
       datasets: [{
         label: "Tickets",
         data: rows.map((row) => row.count),
-        backgroundColor: "rgba(29, 211, 255, 0.62)",
+        backgroundColor: chartTheme.statusBar,
       }],
     },
-    options: { responsive: true, plugins: { legend: { display: false } } },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: chartTheme.text },
+          grid: { color: chartTheme.grid },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: chartTheme.text },
+          grid: { color: chartTheme.grid },
+        },
+      },
+    },
   }, "status");
 }
 
 function renderPriorityChart() {
+  const chartTheme = getChartTheme();
   const byPriority = new Map();
   for (const ticket of state.tickets) {
     const key = String(ticket.priority || "Unspecified").trim() || "Unspecified";
@@ -916,14 +1078,17 @@ function renderPriorityChart() {
       datasets: [{
         data: rows.map((row) => row[1]),
         backgroundColor: hasRealData
-          ? ["#ef4444", "#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#14b8a6"]
-          : ["rgba(156, 163, 175, 0.5)"],
+          ? chartTheme.priority
+          : [chartTheme.empty],
       }],
     },
     options: {
       responsive: true,
       plugins: {
         tooltip: { enabled: hasRealData },
+        legend: {
+          labels: { color: chartTheme.text },
+        },
       },
     },
   }, "priority");
@@ -1123,6 +1288,8 @@ function renderTeamDetailPanels() {
     : (Array.isArray(selectedTeam.members) ? selectedTeam.members : []);
   const releaseTrend = Array.isArray(trendDetail.release_trend) ? trendDetail.release_trend : [];
   const releaseTrendMessage = String(trendDetail.message || "").trim();
+  const isMembersSectionExpanded = state.ui.teamDetailPanels?.members !== false;
+  const isTrendSectionExpanded = state.ui.teamDetailPanels?.trend !== false;
 
   el.teamDetailTitle.textContent = `${teamName} Details`;
 
@@ -1159,7 +1326,56 @@ function renderTeamDetailPanels() {
     )
   );
 
-  const trendRows = releaseTrend.map((item) => {
+  const releasedItems = releaseTrend
+    .filter((item) => String(item.status || "").trim().toLowerCase() === "released")
+    .slice()
+    .sort((left, right) => {
+      const leftMillis = parseReleaseDateMillis(left.release_date);
+      const rightMillis = parseReleaseDateMillis(right.release_date);
+      if (leftMillis !== null && rightMillis !== null) {
+        if (rightMillis !== leftMillis) {
+          return rightMillis - leftMillis;
+        }
+      } else if (rightMillis !== null) {
+        return 1;
+      } else if (leftMillis !== null) {
+        return -1;
+      }
+
+      const leftName = String(left.release_name || "").toLowerCase();
+      const rightName = String(right.release_name || "").toLowerCase();
+      if (leftName < rightName) {
+        return -1;
+      }
+      if (leftName > rightName) {
+        return 1;
+      }
+      return 0;
+    });
+
+  const upcomingItems = releaseTrend.filter(
+    (item) => String(item.status || "").trim().toLowerCase() !== "released"
+  );
+
+  const releasedTimelineItems = releasedItems.map((item) => {
+    const releaseName = escapeHtml(item.release_name || "-");
+    const releaseDate = escapeHtml(formatReleaseDate(item.release_date));
+    const rawStatus = String(item.status || "").trim();
+    const statusLabel = escapeHtml(rawStatus || "-");
+    const statusClass = getReleaseStatusClass(rawStatus);
+    return `<li class="release-timeline-item">
+      <span class="release-timeline-marker" aria-hidden="true"></span>
+      <div class="release-timeline-content">
+        <div class="release-timeline-meta">
+          <span class="release-timeline-date">${releaseDate}</span>
+          <span class="${statusClass}">${statusLabel}</span>
+        </div>
+        <p class="release-timeline-title">${releaseName}</p>
+      </div>
+    </li>`;
+  });
+
+  const trendRows = upcomingItems.map((item) => {
     const releaseName = escapeHtml(item.release_name || "-");
     const releaseDate = escapeHtml(formatReleaseDate(item.release_date));
     const rawStatus = String(item.status || "").trim();
@@ -1176,48 +1392,91 @@ function renderTeamDetailPanels() {
     el.teamDetailContent.innerHTML = `
       <div class="team-detail-stack">
         <section class="team-detail-panel" aria-label="Team member details panel">
-          <h4>Team Member Details</h4>
-          <div class="team-meta-row muted">
-            <span><strong>Members:</strong> ${members.length}</span>
-            <span><strong>Locations:</strong> ${escapeHtml(uniqueLocations.join(", ") || "-")}</span>
-            <span><strong>Contractors:</strong> ${escapeHtml(uniqueContractors.join(", ") || "-")}</span>
+          <div class="team-detail-panel-header">
+            <h4>Team Member Details</h4>
+            <button
+              class="team-detail-collapse-toggle"
+              type="button"
+              data-team-detail-toggle="members"
+              aria-expanded="${isMembersSectionExpanded}"
+              aria-controls="teamDetailMembersBody"
+              aria-label="${isMembersSectionExpanded ? "Collapse Team Member Details" : "Expand Team Member Details"}"
+              title="${isMembersSectionExpanded ? "Collapse" : "Expand"}"
+            >
+              <span class="team-detail-collapse-icon" aria-hidden="true">▾</span>
+            </button>
           </div>
-          ${memberRows.length
-            ? `<div class="table-wrap team-member-table-wrap">
-                <table class="team-member-table">
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Skillset</th>
-                      <th>Location</th>
-                      <th>Contractor</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>${memberRows.join("")}</tbody>
-                </table>
-              </div>`
-            : "<p class='muted'>No team members available.</p>"}
+          <div id="teamDetailMembersBody" class="team-detail-panel-body" ${isMembersSectionExpanded ? "" : "hidden"}>
+            <div class="team-meta-row muted">
+              <span><strong>Members:</strong> ${members.length}</span>
+              <span><strong>Locations:</strong> ${escapeHtml(uniqueLocations.join(", ") || "-")}</span>
+              <span><strong>Contractors:</strong> ${escapeHtml(uniqueContractors.join(", ") || "-")}</span>
+            </div>
+            ${memberRows.length
+              ? `<div class="table-wrap team-member-table-wrap">
+                  <table class="team-member-table">
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Role</th>
+                        <th>Skillset</th>
+                        <th>Location</th>
+                        <th>Contractor</th>
+                        <th>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>${memberRows.join("")}</tbody>
+                  </table>
+                </div>`
+              : "<p class='muted'>No team members available.</p>"}
+          </div>
         </section>
         <section class="team-detail-panel" aria-label="Release trend panel">
-          <h4>Release Trend</h4>
-          ${state.isTrendLoading
-            ? "<p class='muted'>Loading release trend...</p>"
-            : trendRows.length
-            ? `<div class="table-wrap team-member-table-wrap">
-                <table class="team-member-table">
-                  <thead>
-                    <tr>
-                      <th>Release Name</th>
-                      <th>Release Date</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>${trendRows.join("")}</tbody>
-                </table>
-              </div>`
-            : `<p class='muted'>${escapeHtml(releaseTrendMessage || "No release trend data available")}</p>`}
+          <div class="team-detail-panel-header">
+            <h4>Release Trend</h4>
+            <button
+              class="team-detail-collapse-toggle"
+              type="button"
+              data-team-detail-toggle="trend"
+              aria-expanded="${isTrendSectionExpanded}"
+              aria-controls="teamDetailTrendBody"
+              aria-label="${isTrendSectionExpanded ? "Collapse Release Trend" : "Expand Release Trend"}"
+              title="${isTrendSectionExpanded ? "Collapse" : "Expand"}"
+            >
+              <span class="team-detail-collapse-icon" aria-hidden="true">▾</span>
+            </button>
+          </div>
+          <div id="teamDetailTrendBody" class="team-detail-panel-body" ${isTrendSectionExpanded ? "" : "hidden"}>
+            ${state.isTrendLoading
+              ? "<p class='muted'>Loading release trend...</p>"
+              : releaseTrend.length
+              ? `<div class="release-trend-layout">
+              <div class="release-trend-section" aria-label="Planned releases table">
+                    <h5>Planned Releases</h5>
+                    ${trendRows.length
+                      ? `<div class="table-wrap team-member-table-wrap">
+                          <table class="team-member-table">
+                            <thead>
+                              <tr>
+                                <th>Release Name</th>
+                                <th>Release Date</th>
+                                <th>Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>${trendRows.join("")}</tbody>
+                          </table>
+                        </div>`
+                      : "<p class='muted release-trend-empty'>No planned releases available.</p>"}
+                  </div>
+                  <div class="release-trend-section" aria-label="Released releases timeline">
+                    <h5>Released Releases</h5>
+                    ${releasedTimelineItems.length
+                      ? `<ol class="release-timeline">${releasedTimelineItems.join("")}</ol>`
+                      : "<p class='muted release-trend-empty'>No released releases available.</p>"}
+                  </div> 
+                </div>`
+              : `<p class='muted'>${escapeHtml(releaseTrendMessage || "No release trend data available")}</p>`}
+          </div>
         </section>
       </div>
     `;
@@ -1377,10 +1636,25 @@ function normalizeReleaseRows(payload) {
         id,
         name,
         releaseDate,
+        selfUrl: String(release?.self || "").trim(),
+        projectKey: String(release?.projectKey || payload?.project_key || "").trim(),
         status: computeReleaseStatus(release),
+        remarks: String(release?.remarks || ""),
       };
     })
     .filter((row) => row && String(row.status || "") !== "Archived");
+}
+
+function buildReleaseJiraLink(row) {
+  const releaseId = String(row?.id || "").trim();
+  const projectKey = String(row?.projectKey || "QSYSCLOUD").trim() || "QSYSCLOUD";
+  const domain = String(state.jiraDomain || "qsc.atlassian.net").trim() || "qsc.atlassian.net";
+
+  if (!releaseId) {
+    return `https://${domain}/projects/${encodeURIComponent(projectKey)}`;
+  }
+
+  return `https://${domain}/projects/${encodeURIComponent(projectKey)}/versions/${encodeURIComponent(releaseId)}/tab/release-report-all-issues`;
 }
 
 function getReleaseRowByIdMap() {
@@ -1645,6 +1919,7 @@ function renderReleaseModalAddSuggestions() {
   const selectedAddSet = new Set(uniqueValues(state.release.modal.addSelectedIds || []));
   const rows = (state.release.rows || [])
     .filter((row) => !selectedRowSet.has(String(row.id)))
+    .filter((row) => String(row.status || "").trim().toLowerCase() !== "released")
     .filter((row) => !query || getReleaseRelationshipLabel(row).toLowerCase().includes(query));
 
   if (!rows.length) {
@@ -1735,7 +2010,7 @@ function getReleaseModalApplyPayload() {
 }
 
 async function applyReleaseModalChanges() {
-  if (state.release.modal.applying || !el.releaseModalApplyBtn) {
+  if (state.release.modal.applying || !el.releaseModalApplyBtn || el.releaseModalApplyBtn.disabled) {
     return;
   }
   state.release.modal.applying = true;
@@ -1805,13 +2080,157 @@ function closeReleaseEditModal() {
   state.release.modal.addOpen = false;
   state.release.modal.addSearch = "";
   state.release.modal.addSelectedIds = [];
-  hideReleaseInfoTooltip();
+  hideReleaseInfoHoverTooltip();
+  hideReleaseInfoClickPopup();
   if (el.releaseEditModal) {
     el.releaseEditModal.hidden = true;
     el.releaseEditModal.setAttribute("aria-hidden", "true");
   }
   if (state.release.modal.lastFocusedElement && typeof state.release.modal.lastFocusedElement.focus === "function") {
     state.release.modal.lastFocusedElement.focus();
+  }
+}
+
+function closeReleaseRemarksModal() {
+  state.release.remarksModal.isOpen = false;
+  if (el.releaseRemarksModal) {
+    el.releaseRemarksModal.hidden = true;
+    el.releaseRemarksModal.setAttribute("aria-hidden", "true");
+  }
+  if (state.release.remarksModal.lastFocusedElement && typeof state.release.remarksModal.lastFocusedElement.focus === "function") {
+    state.release.remarksModal.lastFocusedElement.focus();
+  }
+}
+
+function renderReleaseRemarksModal() {
+  if (!el.releaseRemarksModal || !el.releaseRemarksTextarea || !el.releaseRemarksApplyBtn || !el.releaseRemarksApplyState) {
+    return;
+  }
+  const modalState = state.release.remarksModal;
+  if (!modalState.isOpen) {
+    el.releaseRemarksModal.hidden = true;
+    el.releaseRemarksModal.setAttribute("aria-hidden", "true");
+    return;
+  }
+
+  el.releaseRemarksModal.hidden = false;
+  el.releaseRemarksModal.setAttribute("aria-hidden", "false");
+  if (el.releaseRemarksModalTitle) {
+    el.releaseRemarksModalTitle.textContent = `Remarks on Release: ${modalState.releaseName || "Unknown Release"}`;
+  }
+
+  const showReadOnly = Boolean(modalState.isReadOnly);
+  if (el.releaseRemarksEditableContent) {
+    el.releaseRemarksEditableContent.hidden = showReadOnly;
+  }
+  if (el.releaseRemarksReadOnlyContent) {
+    el.releaseRemarksReadOnlyContent.hidden = !showReadOnly;
+  }
+  if (el.releaseRemarksReadOnlyText) {
+    const readOnlyText = String(modalState.persistedText || "").trim();
+    el.releaseRemarksReadOnlyText.textContent = readOnlyText || "No remarks added.";
+  }
+
+  el.releaseRemarksTextarea.value = modalState.draftText;
+  el.releaseRemarksTextarea.disabled = showReadOnly || modalState.applying;
+  el.releaseRemarksApplyBtn.hidden = showReadOnly;
+  el.releaseRemarksApplyBtn.disabled = showReadOnly || modalState.applying;
+  el.releaseRemarksApplyBtn.textContent = modalState.applying ? "Applying..." : "Apply";
+  if (el.releaseRemarksResetBtn) {
+    el.releaseRemarksResetBtn.hidden = showReadOnly;
+    el.releaseRemarksResetBtn.disabled = showReadOnly || modalState.applying;
+  }
+  if (el.releaseRemarksFooter) {
+    el.releaseRemarksFooter.hidden = showReadOnly;
+  }
+}
+
+function openReleaseRemarksModal(releaseId, triggerElement = null) {
+  const rowById = getReleaseRowByIdMap();
+  const row = rowById.get(String(releaseId));
+  if (!row) {
+    return;
+  }
+  state.release.remarksModal.isOpen = true;
+  state.release.remarksModal.releaseId = String(releaseId);
+  state.release.remarksModal.releaseName = String(row.name || "");
+  state.release.remarksModal.persistedText = String(row.remarks || "");
+  state.release.remarksModal.draftText = String(row.remarks || "");
+  state.release.remarksModal.applying = false;
+  state.release.remarksModal.isReadOnly = !state.release.editMode;
+  state.release.remarksModal.lastFocusedElement = triggerElement || document.activeElement;
+  if (el.releaseRemarksApplyState) {
+    el.releaseRemarksApplyState.className = "release-modal-inline-state muted";
+    el.releaseRemarksApplyState.textContent = "";
+  }
+  renderReleaseRemarksModal();
+  if (el.releaseRemarksTextarea && !state.release.remarksModal.isReadOnly) {
+    el.releaseRemarksTextarea.focus();
+    el.releaseRemarksTextarea.setSelectionRange(el.releaseRemarksTextarea.value.length, el.releaseRemarksTextarea.value.length);
+  } else if (el.releaseRemarksModalCloseBtn) {
+    el.releaseRemarksModalCloseBtn.focus();
+  }
+}
+
+function resetReleaseRemarksModalDraft() {
+  state.release.remarksModal.draftText = String(state.release.remarksModal.persistedText || "");
+  if (el.releaseRemarksApplyState) {
+    el.releaseRemarksApplyState.className = "release-modal-inline-state muted";
+    el.releaseRemarksApplyState.textContent = "Draft reset.";
+  }
+  renderReleaseRemarksModal();
+}
+
+async function applyReleaseRemark() {
+  const modalState = state.release.remarksModal;
+  const releaseId = String(modalState.releaseId || "").trim();
+  if (!releaseId || modalState.applying) {
+    return;
+  }
+
+  modalState.applying = true;
+  renderReleaseRemarksModal();
+
+  try {
+    const response = await fetch("/api/releases/remarks", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        release_id: releaseId,
+        remarks: String(modalState.draftText || ""),
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const persistedRemarks = String(payload?.remarks || "");
+    for (const row of state.release.rows || []) {
+      if (String(row.id) === releaseId) {
+        row.remarks = persistedRemarks;
+      }
+    }
+    modalState.persistedText = persistedRemarks;
+    modalState.draftText = persistedRemarks;
+    if (el.releaseRemarksApplyState) {
+      el.releaseRemarksApplyState.className = "release-modal-inline-state muted";
+      el.releaseRemarksApplyState.textContent = "Remarks saved.";
+    }
+    setReleaseRelationshipFeedback("Release remarks updated.", "muted");
+    renderReleaseTable();
+    closeReleaseRemarksModal();
+  } catch (error) {
+    if (el.releaseRemarksApplyState) {
+      el.releaseRemarksApplyState.className = "release-modal-inline-state text-danger";
+      el.releaseRemarksApplyState.textContent = `Failed to save remarks: ${String(error?.message || error)}`;
+    }
+  } finally {
+    modalState.applying = false;
+    renderReleaseRemarksModal();
   }
 }
 
@@ -1824,7 +2243,8 @@ function renderReleaseEditModal() {
   const isDirty = !releaseRelationshipMapsEqual(modalState.stagedRelationships, modalState.persistedSnapshot);
 
   if (!modalState.isOpen) {
-    hideReleaseInfoTooltip();
+    hideReleaseInfoHoverTooltip();
+    hideReleaseInfoClickPopup();
     el.releaseEditModal.hidden = true;
     el.releaseEditModal.setAttribute("aria-hidden", "true");
     return;
@@ -1873,6 +2293,9 @@ function renderReleaseEditModal() {
 
   if (el.releaseModalAddSection) {
     el.releaseModalAddSection.hidden = !modalState.addOpen;
+  }
+  if (el.releaseModalAddBtn) {
+    el.releaseModalAddBtn.hidden = modalState.addOpen;
   }
   if (el.releaseModalAddSearchInput) {
     el.releaseModalAddSearchInput.value = modalState.addSearch;
@@ -1969,17 +2392,30 @@ function toggleReleaseRowSelection(rowId, selected) {
   setReleaseSelectedRowsFromSet(selectedSet);
 }
 
+function isReleaseRowSelectable(row) {
+  const status = String(row?.status || "").trim().toLowerCase();
+  return status !== "released";
+}
+
 function updateReleaseSelectAllCheckbox(displayRows) {
   if (!el.releaseSelectAllCheckbox) {
     return;
   }
+  if (!state.release.editMode) {
+    el.releaseSelectAllCheckbox.checked = false;
+    el.releaseSelectAllCheckbox.indeterminate = false;
+    el.releaseSelectAllCheckbox.disabled = true;
+    return;
+  }
   const selectedSet = getReleaseSelectedRowIdsSet();
-  const rows = Array.isArray(displayRows) ? displayRows : [];
+  const rows = (Array.isArray(displayRows) ? displayRows : []).filter((row) => isReleaseRowSelectable(row));
   if (!rows.length) {
     el.releaseSelectAllCheckbox.checked = false;
     el.releaseSelectAllCheckbox.indeterminate = false;
+    el.releaseSelectAllCheckbox.disabled = true;
     return;
   }
+  el.releaseSelectAllCheckbox.disabled = false;
   const selectedCount = rows.filter((row) => selectedSet.has(String(row.id))).length;
   el.releaseSelectAllCheckbox.checked = selectedCount > 0 && selectedCount === rows.length;
   el.releaseSelectAllCheckbox.indeterminate = selectedCount > 0 && selectedCount < rows.length;
@@ -2001,22 +2437,31 @@ function syncReleasePanelVisibility(hasRows) {
   if (el.releaseRelationshipControls) {
     el.releaseRelationshipControls.hidden = true;
   }
-  if (el.releaseEditToggleBtn) {
+  if (el.releaseEditDependenciesBtn) {
     const selectedCount = getReleaseSelectedRowIdsSet().size;
-    el.releaseEditToggleBtn.textContent = "Edit";
-    el.releaseEditToggleBtn.hidden = selectedCount === 0;
-    el.releaseEditToggleBtn.disabled = graphVisible || !rowsAvailable || selectedCount === 0;
-    el.releaseEditToggleBtn.setAttribute("aria-disabled", String(el.releaseEditToggleBtn.disabled));
-    el.releaseEditToggleBtn.title = selectedCount > 0
+    el.releaseEditDependenciesBtn.hidden = graphVisible || selectedCount === 0;
+    el.releaseEditDependenciesBtn.disabled = graphVisible || !rowsAvailable || selectedCount === 0;
+    el.releaseEditDependenciesBtn.setAttribute("aria-disabled", String(el.releaseEditDependenciesBtn.disabled));
+    el.releaseEditDependenciesBtn.title = selectedCount > 0
       ? "Edit dependencies for selected releases"
       : "Select at least one release row to open dependency editor";
+  }
+  if (el.releaseEditToggleBtn) {
+    el.releaseEditToggleBtn.hidden = graphVisible;
+    el.releaseEditToggleBtn.textContent = state.release.editMode ? "Exit Edit" : "Edit";
+    el.releaseEditToggleBtn.disabled = !rowsAvailable;
+    el.releaseEditToggleBtn.classList.toggle("is-active", Boolean(state.release.editMode));
+    el.releaseEditToggleBtn.setAttribute("aria-pressed", String(Boolean(state.release.editMode)));
+    el.releaseEditToggleBtn.title = state.release.editMode
+      ? "Exit release row edit mode"
+      : "Enter release row edit mode";
   }
   if (el.releaseGraphToggleBtn) {
     el.releaseGraphToggleBtn.textContent = graphVisible ? "Hide Graph" : "Show Graph";
   }
   const selectHeader = document.querySelector("#release .release-select-col");
   if (selectHeader) {
-    selectHeader.hidden = false;
+    selectHeader.hidden = !state.release.editMode;
   }
 }
 
@@ -2142,8 +2587,8 @@ function syncReleaseGraphStatusFilterInput() {
     return;
   }
   const values = uniqueValues(state.release.graph.statusFilter || [])
-    .filter((value) => value === "Released" || value === "Planned");
-  state.release.graph.statusFilter = values.length ? values : ["Released", "Planned"];
+    .filter((value) => value === "Planned");
+  state.release.graph.statusFilter = values.length ? values : ["Planned"];
   setSelectedValues(el.releaseGraphStatusFilter, state.release.graph.statusFilter);
 }
 
@@ -2168,9 +2613,9 @@ function renderReleaseStatusFilterOptions() {
   }
   el.releaseStatusFilterSelect.innerHTML = options.join("");
 
-  const currentStatus = String(state.release.filters?.status || "").trim();
+  const currentStatus = String(state.release.filters?.status || "Planned").trim();
   const hasCurrentStatus = currentStatus && statuses.includes(currentStatus);
-  state.release.filters.status = hasCurrentStatus ? currentStatus : "";
+  state.release.filters.status = hasCurrentStatus ? currentStatus : "Planned";
   el.releaseStatusFilterSelect.value = state.release.filters.status;
 }
 
@@ -2186,7 +2631,7 @@ function syncReleaseFilterInputs() {
 function resetReleaseFilters() {
   state.release.filters = {
     nameQuery: "",
-    status: "",
+    status: "Planned",
   };
 }
 
@@ -2278,6 +2723,9 @@ function getReleaseGraphRenderableIds() {
       return false;
     }
     const status = String(row.status || "").trim();
+    if (status === "Released" || status === "Archived") {
+      return false;
+    }
     return selectedStatuses.has(status) || (status === "Overdue" && selectedStatuses.has("Planned"));
   }
 
@@ -2373,13 +2821,24 @@ function renderReleaseGraph() {
     return;
   }
 
+  const graphTheme = getReleaseGraphTheme();
+
   syncReleasePanelVisibility((state.release.rows || []).length > 0);
   if (!state.release.graph.visible) {
+    if (state.release.graph.instance) {
+      state.release.graph.instance.destroy();
+      state.release.graph.instance = null;
+    }
+    el.releaseGraphCanvas.innerHTML = "";
     return;
   }
 
   const cytoscapeCtor = window.cytoscape;
   if (!cytoscapeCtor) {
+    if (state.release.graph.instance) {
+      state.release.graph.instance.destroy();
+      state.release.graph.instance = null;
+    }
     el.releaseGraphCanvas.innerHTML = "<p class='muted'>Graph library unavailable.</p>";
     return;
   }
@@ -2448,6 +2907,7 @@ function renderReleaseGraph() {
     state.release.graph.instance.destroy();
     state.release.graph.instance = null;
   }
+  el.releaseGraphCanvas.innerHTML = "";
 
   state.release.graph.instance = cytoscapeCtor({
     container: el.releaseGraphCanvas,
@@ -2465,9 +2925,9 @@ function renderReleaseGraph() {
           "border-width": 1.5,
           "shape": "round-rectangle",
           "padding": 8,
-          "background-color": "#e2e8f0",
-          "border-color": "#94a3b8",
-          "color": "#0f172a",
+          "background-color": graphTheme.nodeBg,
+          "border-color": graphTheme.nodeBorder,
+          "color": graphTheme.nodeText,
           "width": 190,
           "height": 58,
         },
@@ -2475,33 +2935,33 @@ function renderReleaseGraph() {
       {
         selector: ".status-released",
         style: {
-          "background-color": "#ecfdf5",
-          "border-color": "#10b981",
-          "color": "#065f46",
+          "background-color": graphTheme.releasedBg,
+          "border-color": graphTheme.releasedBorder,
+          "color": graphTheme.releasedText,
         },
       },
       {
         selector: ".status-planned",
         style: {
-          "background-color": "#e8f3ff",
-          "border-color": "#60a5fa",
-          "color": "#1e40af",
+          "background-color": graphTheme.plannedBg,
+          "border-color": graphTheme.plannedBorder,
+          "color": graphTheme.plannedText,
         },
       },
       {
         selector: ".status-archived",
         style: {
-          "background-color": "#fff5e6",
-          "border-color": "#d97706",
-          "color": "#7c2d12",
+          "background-color": graphTheme.archivedBg,
+          "border-color": graphTheme.archivedBorder,
+          "color": graphTheme.archivedText,
         },
       },
       {
         selector: ".status-overdue",
         style: {
-          "background-color": "#fef2f2",
-          "border-color": "#ef4444",
-          "color": "#991b1b",
+          "background-color": graphTheme.overdueBg,
+          "border-color": graphTheme.overdueBorder,
+          "color": graphTheme.overdueText,
         },
       },
       {
@@ -2511,9 +2971,8 @@ function renderReleaseGraph() {
           "font-size": 10,
           "text-valign": "top",
           "text-halign": "center",
-          "background-opacity": 0.08,
-          "background-color": "#60a5fa",
-          "border-color": "#60a5fa",
+          "background-color": graphTheme.groupBg,
+          "border-color": graphTheme.groupBorder,
           "border-width": 1,
           "shape": "round-rectangle",
           "padding": 16,
@@ -2523,9 +2982,9 @@ function renderReleaseGraph() {
         selector: ".edge-depends",
         style: {
           "width": 2,
-          "line-color": "#64748b",
+          "line-color": graphTheme.edgeDepends,
           "curve-style": "bezier",
-          "target-arrow-color": "#64748b",
+          "target-arrow-color": graphTheme.edgeDepends,
           "target-arrow-shape": "triangle",
         },
       },
@@ -2534,7 +2993,7 @@ function renderReleaseGraph() {
         style: {
           "width": 2,
           "line-style": "dashed",
-          "line-color": "#38bdf8",
+          "line-color": graphTheme.edgeCoRelease,
           "curve-style": "bezier",
           "target-arrow-shape": "none",
         },
@@ -2576,14 +3035,23 @@ function renderReleaseTable() {
     return;
   }
 
-  const selectedSet = getReleaseSelectedRowIdsSet();
+  const selectableRowIds = new Set(rows.filter((row) => isReleaseRowSelectable(row)).map((row) => String(row.id)));
+  const selectedSet = new Set(
+    Array.from(getReleaseSelectedRowIdsSet()).filter((releaseId) => selectableRowIds.has(String(releaseId))),
+  );
+  setReleaseSelectedRowsFromSet(selectedSet);
   const htmlRows = rows.map((row) => `<tr>
-      <td class="release-select-col">
-        <input class="release-row-checkbox" type="checkbox" data-release-id="${escapeHtml(row.id)}" ${selectedSet.has(String(row.id)) ? "checked" : ""} aria-label="Select ${escapeHtml(row.name)}" />
-      </td>
-      <td>${escapeHtml(row.name)}</td>
+      ${state.release.editMode
+    ? `<td class="release-select-col">
+        ${isReleaseRowSelectable(row)
+    ? `<input class="release-row-checkbox" type="checkbox" data-release-id="${escapeHtml(row.id)}" ${selectedSet.has(String(row.id)) ? "checked" : ""} aria-label="Select ${escapeHtml(row.name)}" />`
+    : ""}
+      </td>`
+    : ""}
+      <td><a class="release-name-link" href="${escapeHtml(buildReleaseJiraLink(row))}" target="_blank" rel="noopener noreferrer">${escapeHtml(row.name)}</a></td>
       <td>${escapeHtml(formatReleaseDate(row.releaseDate))}</td>
       <td><span class="${getReleaseStatusClass(row.status)}">${escapeHtml(row.status || "-")}</span></td>
+      <td class="release-remarks-cell" data-release-id="${escapeHtml(row.id)}" role="button" tabindex="0" aria-label="${state.release.editMode ? "Edit" : "View"} remarks for ${escapeHtml(row.name)}">${escapeHtml(row.remarks || "-")}</td>
     </tr>`);
 
   el.releaseTableBody.innerHTML = htmlRows.join("");
@@ -2598,6 +3066,25 @@ function renderReleaseTable() {
       syncReleasePanelVisibility(allRows.length > 0);
     });
   }
+
+  for (const remarksCell of el.releaseTableBody.querySelectorAll(".release-remarks-cell")) {
+    const maybeOpenRemarks = () => {
+      const releaseId = String(remarksCell.getAttribute("data-release-id") || "").trim();
+      if (!releaseId) {
+        return;
+      }
+      openReleaseRemarksModal(releaseId, remarksCell);
+    };
+    remarksCell.addEventListener("click", maybeOpenRemarks);
+    remarksCell.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      maybeOpenRemarks();
+    });
+  }
+
   updateReleaseSelectAllCheckbox(rows);
   const isFiltered = rows.length !== allRows.length;
   const message = isFiltered
@@ -2612,7 +3099,7 @@ function renderReleaseTable() {
 
 function resetReleaseSelectionAndForms() {
   state.release.selectedRowIds = [];
-  state.release.editMode = true;
+  state.release.editMode = false;
   state.release.graph.visible = false;
   state.release.relationshipForm = {
     dependsSearch: "",
@@ -2629,6 +3116,16 @@ function resetReleaseSelectionAndForms() {
     addSelectedIds: [],
     persistedSnapshot: {},
     stagedRelationships: {},
+    lastFocusedElement: null,
+  };
+  state.release.remarksModal = {
+    isOpen: false,
+    releaseId: "",
+    releaseName: "",
+    draftText: "",
+    persistedText: "",
+    applying: false,
+    isReadOnly: false,
     lastFocusedElement: null,
   };
 }
@@ -2656,7 +3153,7 @@ async function loadReleaseData() {
     refreshReleaseRelationshipControls();
     syncReleaseGraphStatusFilterInput();
     state.release.loadedOnce = true;
-    setReleaseRelationshipFeedback("Select release rows and click Edit to manage dependency relationships.", "muted");
+    setReleaseRelationshipFeedback("Toggle Edit on, select release rows, then click Edit Dependencies to manage dependencies.", "muted");
     renderReleaseTable();
     renderReleaseGraph();
   } catch (error) {
@@ -2851,6 +3348,24 @@ function bindActions() {
     });
   }
 
+  if (el.teamDetailContent) {
+    el.teamDetailContent.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-team-detail-toggle]") : null;
+      if (!(target instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      const panelKey = String(target.dataset.teamDetailToggle || "").trim();
+      if (panelKey !== "members" && panelKey !== "trend") {
+        return;
+      }
+
+      const currentValue = state.ui.teamDetailPanels?.[panelKey] !== false;
+      state.ui.teamDetailPanels[panelKey] = !currentValue;
+      renderTeamDetailPanels();
+    });
+  }
+
   if (el.assigneeSelectAllBtn) {
     el.assigneeSelectAllBtn.addEventListener("click", () => {
       setSelectedValues(el.assigneeSelect, state.filterOptions.assignees || []);
@@ -2884,14 +3399,18 @@ function bindActions() {
 
   if (el.releaseSelectAllCheckbox) {
     el.releaseSelectAllCheckbox.addEventListener("change", () => {
+      if (!state.release.editMode) {
+        return;
+      }
       const visibleRows = getSortedReleaseRows(getReleaseFilteredRows(state.release.rows || []));
+      const selectableRows = visibleRows.filter((row) => isReleaseRowSelectable(row));
       const selectedSet = getReleaseSelectedRowIdsSet();
       if (el.releaseSelectAllCheckbox.checked) {
-        for (const row of visibleRows) {
+        for (const row of selectableRows) {
           selectedSet.add(String(row.id));
         }
       } else {
-        for (const row of visibleRows) {
+        for (const row of selectableRows) {
           selectedSet.delete(String(row.id));
         }
       }
@@ -2915,9 +3434,22 @@ function bindActions() {
     });
   }
 
+  if (el.releaseEditDependenciesBtn) {
+    el.releaseEditDependenciesBtn.addEventListener("click", () => {
+      openReleaseEditModal();
+    });
+  }
+
   if (el.releaseEditToggleBtn) {
     el.releaseEditToggleBtn.addEventListener("click", () => {
-      openReleaseEditModal();
+      state.release.editMode = !state.release.editMode;
+      if (!state.release.editMode) {
+        state.release.selectedRowIds = [];
+        closeReleaseEditModal();
+        closeReleaseRemarksModal();
+      }
+      renderReleaseTable();
+      syncReleasePanelVisibility((state.release.rows || []).length > 0);
     });
   }
 
@@ -2936,6 +3468,49 @@ function bindActions() {
   if (el.releaseEditModalCloseBtn) {
     el.releaseEditModalCloseBtn.addEventListener("click", () => {
       closeReleaseEditModal();
+    });
+  }
+
+  if (el.releaseRemarksModal) {
+    el.releaseRemarksModal.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (target.getAttribute("data-release-remarks-close") === "true") {
+        closeReleaseRemarksModal();
+      }
+    });
+
+    el.releaseRemarksModal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeReleaseRemarksModal();
+      }
+    });
+  }
+
+  if (el.releaseRemarksModalCloseBtn) {
+    el.releaseRemarksModalCloseBtn.addEventListener("click", () => {
+      closeReleaseRemarksModal();
+    });
+  }
+
+  if (el.releaseRemarksTextarea) {
+    el.releaseRemarksTextarea.addEventListener("input", () => {
+      state.release.remarksModal.draftText = String(el.releaseRemarksTextarea.value || "");
+    });
+  }
+
+  if (el.releaseRemarksResetBtn) {
+    el.releaseRemarksResetBtn.addEventListener("click", () => {
+      resetReleaseRemarksModalDraft();
+    });
+  }
+
+  if (el.releaseRemarksApplyBtn) {
+    el.releaseRemarksApplyBtn.addEventListener("click", () => {
+      void applyReleaseRemark();
     });
   }
 
@@ -3002,8 +3577,11 @@ function bindActions() {
       if (!(target instanceof HTMLElement)) {
         return;
       }
+      if (event.pointerType === "touch") {
+        return;
+      }
       const tooltipText = String(target.getAttribute("data-tooltip") || "").trim();
-      showReleaseInfoTooltip(target, tooltipText, event.clientX, event.clientY);
+      showReleaseInfoHoverTooltip(target, tooltipText, event.clientX, event.clientY);
     });
 
     el.releaseModalTableBody.addEventListener("pointermove", (event) => {
@@ -3011,7 +3589,10 @@ function bindActions() {
       if (!(target instanceof HTMLElement)) {
         return;
       }
-      positionReleaseInfoTooltip(target, event.clientX, event.clientY);
+      if (event.pointerType === "touch") {
+        return;
+      }
+      positionReleaseInfoHoverTooltip(target, event.clientX, event.clientY);
     });
 
     el.releaseModalTableBody.addEventListener("pointerout", (event) => {
@@ -3023,30 +3604,67 @@ function bindActions() {
       if (relatedTarget instanceof Node && target.contains(relatedTarget)) {
         return;
       }
-      hideReleaseInfoTooltip();
+      if (isNodeInsideReleaseInfoHoverTooltip(relatedTarget)) {
+        return;
+      }
+      hideReleaseInfoHoverTooltip();
     });
 
-    el.releaseModalTableBody.addEventListener("focusin", (event) => {
+    el.releaseModalTableBody.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
       if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (releaseInfoClickPopupState.isOpen && releaseInfoClickPopupState.anchor === target) {
+        hideReleaseInfoClickPopup();
         return;
       }
       const tooltipText = String(target.getAttribute("data-tooltip") || "").trim();
-      showReleaseInfoTooltip(target, tooltipText);
+      hideReleaseInfoHoverTooltip();
+      openReleaseInfoClickPopup(target, tooltipText);
     });
+  }
 
-    el.releaseModalTableBody.addEventListener("focusout", (event) => {
-      const target = event.target instanceof Element ? event.target.closest(".release-modal-info-icon") : null;
-      if (!(target instanceof HTMLElement)) {
-        return;
+  document.addEventListener("pointerdown", (event) => {
+    if (
+      releaseInfoClickPopupState.isOpen &&
+      !isNodeInsideReleaseInfoClickPopup(event.target) &&
+      !isNodeInsideReleaseInfoClickPopupAnchor(event.target)
+    ) {
+      hideReleaseInfoClickPopup();
+    }
+    if (!isNodeInsideReleaseInfoHoverTooltip(event.target)) {
+      hideReleaseInfoHoverTooltip();
+    }
+  });
+
+  if (el.releaseInfoClickPopupCloseBtn) {
+    el.releaseInfoClickPopupCloseBtn.addEventListener("click", () => {
+      hideReleaseInfoClickPopup();
+    });
+  }
+
+  if (el.releaseInfoClickPopup) {
+    el.releaseInfoClickPopup.addEventListener("click", (event) => {
+      const closeTarget = event.target instanceof Element
+        ? event.target.closest("[data-release-info-popup-close='true']")
+        : null;
+      if (closeTarget) {
+        hideReleaseInfoClickPopup();
       }
-      hideReleaseInfoTooltip();
     });
   }
 
   if (el.releaseEditModal) {
     el.releaseEditModal.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
+        if (releaseInfoClickPopupState.isOpen) {
+          event.preventDefault();
+          hideReleaseInfoClickPopup();
+          return;
+        }
         event.preventDefault();
         closeReleaseEditModal();
         return;
@@ -3148,11 +3766,13 @@ function bindActions() {
       state.ui.sidebarCollapsed = false;
       syncSidebarDisclosure();
     }
-    hideReleaseInfoTooltip();
+    hideReleaseInfoHoverTooltip();
+    hideReleaseInfoClickPopup();
   });
 
   window.addEventListener("scroll", () => {
-    hideReleaseInfoTooltip();
+    hideReleaseInfoHoverTooltip();
+    hideReleaseInfoClickPopup();
   }, true);
 
   // InfoComm Show Selector buttons
@@ -3250,12 +3870,14 @@ function bindThemeToggle() {
 
   const savedTheme = localStorage.getItem("theme") || "light";
   document.body.setAttribute("data-theme", savedTheme);
+  rerenderThemeSensitiveVisuals();
 
   el.themeToggleBtn.addEventListener("click", () => {
     const currentTheme = document.body.getAttribute("data-theme") || "light";
     const nextTheme = currentTheme === "light" ? "dark" : "light";
     document.body.setAttribute("data-theme", nextTheme);
     localStorage.setItem("theme", nextTheme);
+    rerenderThemeSensitiveVisuals();
   });
 }
 

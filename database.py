@@ -526,6 +526,13 @@ def init_release_relationship_schema(db_path: str = "database.db") -> None:
                 CHECK (release_id <> co_release_id)
             );
 
+            CREATE TABLE IF NOT EXISTS release_remarks (
+                release_id TEXT PRIMARY KEY,
+                remarks TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_release_dependencies_release_id
                 ON release_dependencies (release_id);
 
@@ -600,6 +607,7 @@ def upsert_release_versions_snapshot(
                 status,
                 1 if bool(release.get("released", False)) else 0,
                 1 if bool(release.get("archived", False)) else 0,
+                str(release.get("remarks") or ""),
                 _to_json(release),
                 now_iso,
             )
@@ -619,9 +627,10 @@ def upsert_release_versions_snapshot(
                 status,
                 released,
                 archived,
+                remarks,
                 raw_json,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(release_id) DO UPDATE SET
                 project_key=excluded.project_key,
                 release_name=excluded.release_name,
@@ -667,7 +676,7 @@ def load_release_versions_by_names(
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT release_id, release_name, release_date, status, project_key
+            SELECT release_id, release_name, release_date, status, project_key, remarks
             FROM release_versions_current
             WHERE {where_clause}
             ORDER BY COALESCE(release_date, ''), LOWER(TRIM(release_name))
@@ -682,6 +691,7 @@ def load_release_versions_by_names(
             "release_date": row["release_date"],
             "status": row["status"],
             "project_key": row["project_key"],
+            "remarks": row["remarks"],
         }
         for row in rows
     ]
@@ -700,7 +710,7 @@ def load_release_versions_snapshot(project_key: str | None = None) -> list[dict[
     with get_connection() as conn:
         rows = conn.execute(
             f"""
-            SELECT release_id, release_name, release_date, status, project_key
+            SELECT release_id, release_name, release_date, status, project_key, remarks
             FROM release_versions_current
             {where_clause}
             ORDER BY COALESCE(release_date, ''), LOWER(TRIM(release_name))
@@ -715,9 +725,62 @@ def load_release_versions_snapshot(project_key: str | None = None) -> list[dict[
             "release_date": row["release_date"],
             "status": row["status"],
             "project_key": row["project_key"],
+            "remarks": row["remarks"],
         }
         for row in rows
     ]
+
+
+def load_release_remarks_map(release_ids: list[str], db_path: str = "database.db") -> dict[str, str]:
+    """Return persisted remarks keyed by release id for provided ids."""
+    init_release_relationship_schema(db_path)
+    normalized_ids = _normalize_release_ids(release_ids)
+    if not normalized_ids:
+        return {}
+
+    placeholders = ", ".join("?" for _ in normalized_ids)
+    with get_release_relationship_connection(db_path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT release_id, remarks
+            FROM release_remarks
+            WHERE release_id IN ({placeholders})
+            """,
+            normalized_ids,
+        ).fetchall()
+
+    return {
+        str(row["release_id"]): str(row["remarks"] or "")
+        for row in rows
+        if str(row["release_id"] or "").strip()
+    }
+
+
+def save_release_remark(release_id: str, remarks: str, db_path: str = "database.db") -> bool:
+    """Persist remark text for a single release id."""
+    init_release_relationship_schema(db_path)
+    normalized_release_id = str(release_id or "").strip()
+    if not normalized_release_id:
+        return False
+
+    with get_release_relationship_connection(db_path) as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO release_remarks(release_id, remarks, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(release_id) DO UPDATE SET
+                remarks=excluded.remarks,
+                updated_at=excluded.updated_at
+            """,
+            (
+                normalized_release_id,
+                str(remarks or ""),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+
+    return bool(cursor.rowcount >= 0)
 
 
 def normalize_relationship_payload(
@@ -1082,6 +1145,7 @@ def init_db() -> None:
                 status TEXT NOT NULL,
                 released INTEGER NOT NULL DEFAULT 0,
                 archived INTEGER NOT NULL DEFAULT 0,
+                remarks TEXT NOT NULL DEFAULT '',
                 raw_json TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -1108,6 +1172,7 @@ def init_db() -> None:
         _ensure_column_exists(conn, "tickets_current", "team_name", "team_name TEXT")
         _ensure_column_exists(conn, "tickets_current", "team_ids_json", "team_ids_json TEXT")
         _ensure_column_exists(conn, "tickets_current", "team_names_json", "team_names_json TEXT")
+        _ensure_column_exists(conn, "release_versions_current", "remarks", "remarks TEXT NOT NULL DEFAULT ''")
         conn.commit()
 
     # Release relationship persistence is intentionally in a dedicated local database file.

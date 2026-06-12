@@ -2,6 +2,8 @@
     "python-envs.defaultEnvManager": "ms-python.python:venv",
     "chat.tools.terminal.autoApprove": {
         "&": true,
-        "pytest": true
+        "pytest": true,
+        "ForEach-Object": true,
+        "el.releaseModalTableBody": true
     }
 }

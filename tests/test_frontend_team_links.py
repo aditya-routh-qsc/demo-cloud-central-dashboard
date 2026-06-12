@@ -21,18 +21,58 @@ class FrontendTeamLinksContractTests(unittest.TestCase):
         self.assertIn(".team-member-table-wrap", style_css)
         self.assertIn(".team-detail-stack", style_css)
         self.assertIn(".team-detail-panel", style_css)
+        self.assertIn(".team-detail-panel-header", style_css)
+        self.assertIn(".team-detail-collapse-toggle", style_css)
+        self.assertIn(".team-detail-panel-body", style_css)
+        self.assertIn(".release-trend-layout", style_css)
+        self.assertIn(".release-trend-section", style_css)
+        self.assertIn(".release-timeline", style_css)
+        self.assertIn(".release-timeline-item", style_css)
+        self.assertIn(".release-timeline-marker", style_css)
         self.assertNotIn(".team-name-link", style_css)
         self.assertNotIn(".team-detail-title-link", style_css)
+
+    def test_team_detail_release_trend_uses_released_timeline_and_planned_table(self) -> None:
+        app_js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+        self.assertIn('String(item.status || "").trim().toLowerCase() === "released"', app_js)
+        self.assertIn('String(item.status || "").trim().toLowerCase() !== "released"', app_js)
+        self.assertIn('h5>Released Releases</h5>', app_js)
+        self.assertIn('h5>Planned Releases</h5>', app_js)
+        self.assertIn('class="release-timeline"', app_js)
+        self.assertIn('class="release-timeline-item"', app_js)
+        self.assertIn('class="release-timeline-marker"', app_js)
+        self.assertIn('class="release-timeline-date"', app_js)
+        self.assertIn('class="release-timeline-title"', app_js)
+        self.assertIn('No released releases available.', app_js)
+        self.assertIn('No planned releases available.', app_js)
+
+    def test_team_detail_panels_are_collapsible(self) -> None:
+        app_js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+        self.assertIn("teamDetailPanels", app_js)
+        self.assertIn('data-team-detail-toggle="members"', app_js)
+        self.assertIn('data-team-detail-toggle="trend"', app_js)
+        self.assertIn('aria-controls="teamDetailMembersBody"', app_js)
+        self.assertIn('aria-controls="teamDetailTrendBody"', app_js)
+        self.assertIn('state.ui.teamDetailPanels[panelKey] = !currentValue', app_js)
 
     def test_team_and_infocomm_tabs_hide_filter_controls_and_ignore_filter_queries(self) -> None:
         app_js = Path("frontend/app.js").read_text(encoding="utf-8")
 
-        self.assertIn('tabName === "teams" || tabName === "infocomm" || tabName === "release"', app_js)
+        self.assertIn('tabName === "teams" || tabName === "infocomm" || tabName === "release" || tabName === "wiki"', app_js)
         self.assertIn("controlToolbar", app_js)
         self.assertIn('classList.remove("control-toolbar", "panel")', app_js)
         self.assertIn('classList.add("control-toolbar", "panel")', app_js)
         self.assertIn("el.controlToolbar.hidden = hideFilters", app_js)
         self.assertIn('apiGet("/api/teams")', app_js)
+
+    def test_wiki_tab_and_useful_links_section_exist(self) -> None:
+        index_html = Path("frontend/index.html").read_text(encoding="utf-8")
+
+        self.assertIn('data-tab="wiki"', index_html)
+        self.assertIn('id="wiki" class="view"', index_html)
+        self.assertIn('id="overviewUsefulLinksPanel"', index_html)
 
     def test_overview_and_tickets_search_panel_defaults_to_collapsed(self) -> None:
         app_js = Path("frontend/app.js").read_text(encoding="utf-8")
@@ -160,20 +200,29 @@ class FrontendTeamLinksContractTests(unittest.TestCase):
         self.assertIn("getReleaseGraphRenderableIds", app_js)
         self.assertIn("syncReleasePanelVisibility", app_js)
         self.assertIn("state.release.graph.statusFilter", app_js)
-        self.assertIn('statusFilter: ["Released", "Planned"]', app_js)
+        self.assertIn('state.release.graph.statusFilter = values.length ? values : ["Planned"]', app_js)
         self.assertIn('status === "Overdue" && selectedStatuses.has("Planned")', app_js)
         self.assertIn("status-planned", app_js)
         self.assertIn("status-overdue", app_js)
         self.assertIn('id="releaseGraphStatusFilter"', index_html)
-        self.assertIn('<option value="Released" selected>Released</option>', index_html)
         self.assertIn('<option value="Planned" selected>Planned</option>', index_html)
         self.assertNotIn('<option value="Archived" selected>Archived</option>', index_html)
         self.assertNotIn('<option value="Overdue" selected>Overdue</option>', index_html)
+        self.assertIn("height: clamp(360px, 58vh, 560px)", style_css)
+        self.assertIn("overflow: hidden", style_css)
         self.assertIn(".release-graph-panel", style_css)
         self.assertIn(".release-graph-canvas", style_css)
 
+    def test_release_rows_mark_released_as_non_selectable(self) -> None:
+        app_js = Path("frontend/app.js").read_text(encoding="utf-8")
+
+        self.assertIn("function isReleaseRowSelectable", app_js)
+        self.assertIn('status !== "released"', app_js)
+        self.assertIn('rows.filter((row) => isReleaseRowSelectable(row))', app_js)
+
     def test_release_edit_mode_and_suggestion_pickers_are_present(self) -> None:
         app_js = Path("frontend/app.js").read_text(encoding="utf-8")
+        index_html = Path("frontend/index.html").read_text(encoding="utf-8")
         style_css = Path("frontend/style.css").read_text(encoding="utf-8")
 
         self.assertIn("openReleaseEditModal", app_js)
@@ -183,13 +232,45 @@ class FrontendTeamLinksContractTests(unittest.TestCase):
         self.assertIn("applyReleaseModalChanges", app_js)
         self.assertIn("state.release.modal.activeTab", app_js)
         self.assertIn("releaseModalApplyBtn", app_js)
-        self.assertIn("Edit", app_js)
-        self.assertIn("selectedCount === 0", app_js)
-        self.assertIn("releaseEditToggleBtn.hidden = selectedCount === 0", app_js)
+        self.assertIn('releaseEditToggleBtn.textContent = state.release.editMode ? "Exit Edit" : "Edit"', app_js)
+        self.assertIn('releaseEditToggleBtn.classList.toggle("is-active", Boolean(state.release.editMode))', app_js)
+        self.assertIn("releaseEditDependenciesBtn.hidden = graphVisible || selectedCount === 0", app_js)
+        self.assertIn("releaseEditDependenciesBtn.disabled = graphVisible || !rowsAvailable || selectedCount === 0", app_js)
+        self.assertIn("releaseModalAddBtn.hidden = modalState.addOpen", app_js)
         self.assertIn("Select at least one release row to open dependency editor", app_js)
+        self.assertIn('class="release-modal-close-btn"', index_html)
+        self.assertIn('id="releaseModalResetBtn" type="button" class="release-modal-secondary-btn" disabled', index_html)
+        self.assertIn('id="releaseModalAddBtn" type="button" class="release-modal-secondary-btn"', index_html)
         self.assertIn(".release-edit-modal", style_css)
+        self.assertIn(".release-modal-close-btn", style_css)
+        self.assertIn(".release-modal-secondary-btn", style_css)
         self.assertIn(".release-modal-tab", style_css)
         self.assertIn(".release-modal-remove-btn", style_css)
+
+    def test_release_info_icon_supports_hover_preview_and_click_popup(self) -> None:
+        app_js = Path("frontend/app.js").read_text(encoding="utf-8")
+        index_html = Path("frontend/index.html").read_text(encoding="utf-8")
+        style_css = Path("frontend/style.css").read_text(encoding="utf-8")
+
+        self.assertIn('el.releaseModalTableBody.addEventListener("pointerover"', app_js)
+        self.assertIn('showReleaseInfoHoverTooltip(target, tooltipText, event.clientX, event.clientY)', app_js)
+        self.assertIn('el.releaseModalTableBody.addEventListener("pointermove"', app_js)
+        self.assertIn('positionReleaseInfoHoverTooltip(target, event.clientX, event.clientY)', app_js)
+        self.assertIn('el.releaseModalTableBody.addEventListener("pointerout"', app_js)
+        self.assertIn('hideReleaseInfoHoverTooltip();', app_js)
+        self.assertIn('el.releaseModalTableBody.addEventListener("click"', app_js)
+        self.assertIn('openReleaseInfoClickPopup(target, tooltipText)', app_js)
+        self.assertIn('if (releaseInfoClickPopupState.isOpen && releaseInfoClickPopupState.anchor === target)', app_js)
+        self.assertIn('document.addEventListener("pointerdown"', app_js)
+        self.assertIn('isNodeInsideReleaseInfoClickPopup(event.target)', app_js)
+        self.assertIn('hideReleaseInfoClickPopup();', app_js)
+        self.assertIn('release-info-tooltip-layer', style_css)
+        self.assertIn('id="releaseInfoClickPopup"', index_html)
+        self.assertIn('id="releaseInfoClickPopupCloseBtn"', index_html)
+        self.assertIn('id="releaseInfoClickPopupContent"', index_html)
+        self.assertIn("Dependency details", index_html)
+        self.assertIn(".release-click-popup", style_css)
+        self.assertIn(".release-click-popup-content", style_css)
 
     def test_release_status_cells_have_theme_aligned_color_classes(self) -> None:
         app_js = Path("frontend/app.js").read_text(encoding="utf-8")
